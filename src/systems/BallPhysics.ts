@@ -2,9 +2,19 @@ import Phaser from 'phaser';
 import { IsometricMap } from './IsometricMap';
 import { TileType, TILE_PROPERTIES } from '../models/TileTypes';
 import { EventBus } from '../utils/EventBus';
+import {
+  GRAVITY, BOUNCE_FACTOR, BOUNCE_FRICTION, MIN_BOUNCE_VZ,
+  TRAJECTORY_STEPS, TRAJECTORY_DT,
+} from '../utils/Constants';
 
 const STOP_THRESHOLD = 3;
 const WATER_SPEED_THRESHOLD = 30;
+
+export interface TrajectoryPoint {
+  x: number;
+  y: number;
+  z: number;
+}
 
 export class BallPhysics {
   private scene: Phaser.Scene;
@@ -13,13 +23,22 @@ export class BallPhysics {
   private strokeCount = 0;
   private lastSafePosition: { x: number; y: number } = { x: 0, y: 0 };
 
+  // Z-axis (height) simulation
+  private z = 0;
+  private vz = 0;
+  private groundX = 0;
+  private groundY = 0;
+  private isAirborne = false;
+  private shadowGraphics!: Phaser.GameObjects.Graphics;
+
   constructor(scene: Phaser.Scene, isoMap: IsometricMap) {
     this.scene = scene;
     this.isoMap = isoMap;
+    this.shadowGraphics = scene.add.graphics();
+    this.shadowGraphics.setDepth(799);
   }
 
   createBall(worldX: number, worldY: number): Phaser.Types.Physics.Arcade.SpriteWithDynamicBody {
-    // Generate ball texture if needed
     if (!this.scene.textures.exists('ball')) {
       const g = this.scene.add.graphics();
       g.fillStyle(0xffffff, 1);
@@ -38,24 +57,90 @@ export class BallPhysics {
     this.ball.setDepth(800);
     this.ball.body.setMaxVelocity(600, 600);
 
+    this.groundX = worldX;
+    this.groundY = worldY;
+    this.z = 0;
+    this.vz = 0;
+    this.isAirborne = false;
     this.lastSafePosition = { x: worldX, y: worldY };
 
     return this.ball;
   }
 
-  shoot(angle: number, power: number): void {
+  shoot(angle: number, power: number, loftDegrees: number): void {
     if (!this.ball) return;
-    this.lastSafePosition = { x: this.ball.x, y: this.ball.y };
+    this.lastSafePosition = { x: this.groundX, y: this.groundY };
 
-    const vx = Math.cos(angle) * power;
-    const vy = Math.sin(angle) * power;
+    const loftRad = Phaser.Math.DegToRad(loftDegrees);
+    const horizontalPower = power * Math.cos(loftRad);
+    this.vz = power * Math.sin(loftRad);
+
+    const vx = Math.cos(angle) * horizontalPower;
+    const vy = Math.sin(angle) * horizontalPower;
     this.ball.setVelocity(vx, vy);
+
+    this.isAirborne = this.vz > MIN_BOUNCE_VZ;
+    this.z = 0;
+    this.groundX = this.ball.x;
+    this.groundY = this.ball.y;
+
     this.strokeCount++;
     EventBus.emit('stroke-taken', this.strokeCount);
   }
 
-  update(_delta: number): void {
+  update(delta: number): void {
     if (!this.ball || !this.ball.body) return;
+
+    const dt = delta / 1000;
+
+    if (this.isAirborne) {
+      this.updateAirborne(dt);
+    } else {
+      this.updateGround();
+    }
+
+    this.drawShadow();
+  }
+
+  private updateAirborne(dt: number): void {
+    // Apply gravity
+    this.vz -= GRAVITY * dt;
+    this.z += this.vz * dt;
+
+    // Track ground position from physics body (horizontal movement continues)
+    this.groundX = this.ball.x;
+    this.groundY = this.ball.y;
+
+    // Offset ball sprite visually upward by z
+    this.ball.y = this.groundY - this.z;
+
+    // No terrain drag while airborne
+    this.ball.setDrag(1, 1);
+
+    // Check landing
+    if (this.z <= 0 && this.vz < 0) {
+      this.z = 0;
+      this.ball.y = this.groundY;
+
+      // Bounce
+      if (Math.abs(this.vz) > MIN_BOUNCE_VZ) {
+        this.vz = -this.vz * BOUNCE_FACTOR;
+        // Reduce horizontal velocity on bounce
+        const currentVx = this.ball.body.velocity.x * BOUNCE_FRICTION;
+        const currentVy = this.ball.body.velocity.y * BOUNCE_FRICTION;
+        this.ball.setVelocity(currentVx, currentVy);
+      } else {
+        // Done bouncing, switch to ground mode
+        this.vz = 0;
+        this.isAirborne = false;
+        this.ball.setPosition(this.groundX, this.groundY);
+      }
+    }
+  }
+
+  private updateGround(): void {
+    this.groundX = this.ball.x;
+    this.groundY = this.ball.y;
 
     const speed = this.ball.body.speed;
     if (speed < STOP_THRESHOLD) {
@@ -63,38 +148,114 @@ export class BallPhysics {
       return;
     }
 
-    // Get terrain under ball
-    const tileType = this.getTerrainUnderBall();
+    const tileType = this.getTerrainAtWorld(this.groundX, this.groundY);
     const props = TILE_PROPERTIES[tileType];
-
-    // Apply terrain-based drag
     this.ball.setDrag(props.friction, props.friction);
 
-    // Water hazard detection
     if (tileType === TileType.WATER && speed < WATER_SPEED_THRESHOLD) {
       this.handleWaterHazard();
     }
   }
 
+  private drawShadow(): void {
+    this.shadowGraphics.clear();
+    if (!this.isAirborne || this.z <= 1) return;
+
+    // Draw an ellipse shadow on the ground
+    const shadowScale = Math.max(0.3, 1 - this.z / 300);
+    const rx = 6 * shadowScale;
+    const ry = 3 * shadowScale;
+    const alpha = 0.4 * shadowScale;
+
+    this.shadowGraphics.fillStyle(0x000000, alpha);
+    this.shadowGraphics.fillEllipse(this.groundX, this.groundY, rx * 2, ry * 2);
+  }
+
   private handleWaterHazard(): void {
     this.strokeCount++;
     this.ball.setVelocity(0, 0);
+    this.z = 0;
+    this.vz = 0;
+    this.isAirborne = false;
+    this.groundX = this.lastSafePosition.x;
+    this.groundY = this.lastSafePosition.y;
     this.ball.setPosition(this.lastSafePosition.x, this.lastSafePosition.y);
     EventBus.emit('water-hazard', this.strokeCount);
   }
 
-  private getTerrainUnderBall(): TileType {
-    const { tileX, tileY } = this.isoMap.worldToTile(this.ball.x, this.ball.y);
+  private getTerrainAtWorld(wx: number, wy: number): TileType {
+    const { tileX, tileY } = this.isoMap.worldToTile(wx, wy);
     return this.isoMap.getTileAt(tileX, tileY);
+  }
+
+  /**
+   * Simulate the trajectory for a given shot to generate preview points.
+   * Returns an array of {x, y, z} world-space points.
+   */
+  simulateTrajectory(
+    startX: number,
+    startY: number,
+    dirAngle: number,
+    power: number,
+    loftDegrees: number
+  ): TrajectoryPoint[] {
+    const points: TrajectoryPoint[] = [];
+    const loftRad = Phaser.Math.DegToRad(loftDegrees);
+    const horizontalPower = power * Math.cos(loftRad);
+    let vz = power * Math.sin(loftRad);
+
+    let vx = Math.cos(dirAngle) * horizontalPower;
+    let vy = Math.sin(dirAngle) * horizontalPower;
+    let x = startX;
+    let y = startY;
+    let z = 0;
+    let landed = false;
+    let bounces = 0;
+
+    for (let i = 0; i < TRAJECTORY_STEPS && !landed; i++) {
+      x += vx * TRAJECTORY_DT;
+      y += vy * TRAJECTORY_DT;
+      vz -= GRAVITY * TRAJECTORY_DT;
+      z += vz * TRAJECTORY_DT;
+
+      if (z <= 0 && vz < 0) {
+        z = 0;
+        if (Math.abs(vz) > MIN_BOUNCE_VZ && bounces < 3) {
+          vz = -vz * BOUNCE_FACTOR;
+          vx *= BOUNCE_FRICTION;
+          vy *= BOUNCE_FRICTION;
+          bounces++;
+        } else {
+          landed = true;
+        }
+      }
+
+      points.push({ x, y, z: Math.max(0, z) });
+    }
+
+    return points;
   }
 
   isStopped(): boolean {
     if (!this.ball || !this.ball.body) return true;
+    if (this.isAirborne) return false;
     return this.ball.body.speed < STOP_THRESHOLD;
+  }
+
+  isInFlight(): boolean {
+    return this.isAirborne;
   }
 
   getBall(): Phaser.Types.Physics.Arcade.SpriteWithDynamicBody {
     return this.ball;
+  }
+
+  getGroundPosition(): { x: number; y: number } {
+    return { x: this.groundX, y: this.groundY };
+  }
+
+  getHeight(): number {
+    return this.z;
   }
 
   getStrokeCount(): number {
@@ -108,12 +269,16 @@ export class BallPhysics {
   moveBallTo(worldX: number, worldY: number): void {
     this.ball.setPosition(worldX, worldY);
     this.ball.setVelocity(0, 0);
+    this.groundX = worldX;
+    this.groundY = worldY;
+    this.z = 0;
+    this.vz = 0;
+    this.isAirborne = false;
     this.lastSafePosition = { x: worldX, y: worldY };
   }
 
   destroy(): void {
-    if (this.ball) {
-      this.ball.destroy();
-    }
+    if (this.ball) this.ball.destroy();
+    if (this.shadowGraphics) this.shadowGraphics.destroy();
   }
 }

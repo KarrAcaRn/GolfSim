@@ -140,9 +140,9 @@ export class PlayScene extends Phaser.Scene {
   private checkHoleCompletion(): void {
     const hole = this.courseData.holes[this.currentHoleIndex];
     const flagPos = this.isoMap.tileToWorld(hole.flagPosition.tileX, hole.flagPosition.tileY);
-    const ball = this.ballPhysics.getBall();
+    const groundPos = this.ballPhysics.getGroundPosition();
 
-    const distance = Phaser.Math.Distance.Between(ball.x, ball.y, flagPos.x, flagPos.y);
+    const distance = Phaser.Math.Distance.Between(groundPos.x, groundPos.y, flagPos.x, flagPos.y);
 
     if (distance < HOLE_SINK_RADIUS) {
       this.onHoleComplete();
@@ -259,10 +259,10 @@ export class PlayScene extends Phaser.Scene {
     this.ballPhysics.update(delta);
     this.aimingSystem.update();
 
-    // Follow ball while rolling
+    // Follow ball's ground position while in motion
     if (!this.ballPhysics.isStopped()) {
-      const ball = this.ballPhysics.getBall();
-      this.cameras.main.centerOn(ball.x, ball.y);
+      const groundPos = this.ballPhysics.getGroundPosition();
+      this.cameras.main.centerOn(groundPos.x, groundPos.y);
     }
   }
 
