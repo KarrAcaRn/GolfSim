@@ -4,7 +4,7 @@ import { TileType, TILE_PROPERTIES } from '../models/TileTypes';
 import { EventBus } from '../utils/EventBus';
 import {
   GRAVITY, BOUNCE_FACTOR, BOUNCE_FRICTION, MIN_BOUNCE_VZ,
-  TRAJECTORY_STEPS, TRAJECTORY_DT,
+  LANDING_SPEED_FACTOR, TRAJECTORY_STEPS, TRAJECTORY_DT,
 } from '../utils/Constants';
 
 const STOP_THRESHOLD = 3;
@@ -136,8 +136,11 @@ export class BallPhysics {
         this.groundVy *= BOUNCE_FRICTION;
       } else {
         // Done bouncing — hand off to Phaser physics for ground rolling
+        // Reduce speed significantly on final landing
         this.vz = 0;
         this.isAirborne = false;
+        this.groundVx *= LANDING_SPEED_FACTOR;
+        this.groundVy *= LANDING_SPEED_FACTOR;
         this.ball.setPosition(this.groundX, this.groundY);
         this.ball.body.enable = true;
         this.ball.setVelocity(this.groundVx, this.groundVy);
