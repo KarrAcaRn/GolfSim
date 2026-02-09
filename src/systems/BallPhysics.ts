@@ -23,7 +23,7 @@ export class BallPhysics {
   private strokeCount = 0;
   private lastSafePosition: { x: number; y: number } = { x: 0, y: 0 };
 
-  // Z-axis (height) simulation — manual tracking during flight
+  // All movement is manually tracked — Phaser body only used for sprite display
   private z = 0;
   private vz = 0;
   private groundX = 0;
@@ -31,6 +31,7 @@ export class BallPhysics {
   private groundVx = 0;
   private groundVy = 0;
   private isAirborne = false;
+  private isRolling = false;
   private shadowGraphics!: Phaser.GameObjects.Graphics;
 
   constructor(scene: Phaser.Scene, isoMap: IsometricMap) {
@@ -53,11 +54,8 @@ export class BallPhysics {
 
     this.ball = this.scene.physics.add.sprite(worldX, worldY, 'ball');
     this.ball.setCircle(5);
-    this.ball.setBounce(0.3);
-    this.ball.setDamping(true);
-    this.ball.setDrag(0.92, 0.92);
     this.ball.setDepth(800);
-    this.ball.body.setMaxVelocity(600, 600);
+    this.ball.body.enable = false; // We handle all movement manually
 
     this.groundX = worldX;
     this.groundY = worldY;
@@ -82,17 +80,17 @@ export class BallPhysics {
     this.groundVx = Math.cos(angle) * horizontalPower;
     this.groundVy = Math.sin(angle) * horizontalPower;
 
-    this.isAirborne = this.vz > MIN_BOUNCE_VZ;
     this.z = 0;
     this.groundX = this.ball.x;
     this.groundY = this.ball.y;
 
-    if (this.isAirborne) {
-      // Disable physics body during flight — we track position manually
-      this.ball.body.enable = false;
+    if (this.vz > MIN_BOUNCE_VZ) {
+      this.isAirborne = true;
+      this.isRolling = false;
     } else {
-      // Low loft: just roll on the ground via physics
-      this.ball.setVelocity(this.groundVx, this.groundVy);
+      // Low loft: skip flight, go straight to rolling
+      this.isAirborne = false;
+      this.isRolling = true;
     }
 
     this.strokeCount++;
@@ -106,8 +104,8 @@ export class BallPhysics {
 
     if (this.isAirborne) {
       this.updateAirborne(dt);
-    } else {
-      this.updateGround();
+    } else if (this.isRolling) {
+      this.updateGround(dt);
     }
 
     this.drawShadow();
@@ -135,38 +133,51 @@ export class BallPhysics {
         this.groundVx *= BOUNCE_FRICTION;
         this.groundVy *= BOUNCE_FRICTION;
       } else {
-        // Done bouncing — hand off to Phaser physics for ground rolling
-        // Reduce speed significantly on final landing
+        // Done bouncing — transition to manual ground rolling
         this.vz = 0;
         this.isAirborne = false;
+        this.isRolling = true;
         this.groundVx *= LANDING_SPEED_FACTOR;
         this.groundVy *= LANDING_SPEED_FACTOR;
         this.ball.setPosition(this.groundX, this.groundY);
-        this.ball.body.enable = true;
-        this.ball.setVelocity(this.groundVx, this.groundVy);
       }
     }
   }
 
-  private updateGround(): void {
-    if (!this.ball.body || !this.ball.body.enable) return;
+  private updateGround(dt: number): void {
+    const speed = Math.sqrt(this.groundVx * this.groundVx + this.groundVy * this.groundVy);
 
-    this.groundX = this.ball.x;
-    this.groundY = this.ball.y;
-
-    const speed = this.ball.body.speed;
     if (speed < STOP_THRESHOLD) {
-      this.ball.setVelocity(0, 0);
+      this.groundVx = 0;
+      this.groundVy = 0;
+      this.isRolling = false;
       return;
     }
 
+    // Get terrain friction at current position
     const tileType = this.getTerrainAtWorld(this.groundX, this.groundY);
     const props = TILE_PROPERTIES[tileType];
-    this.ball.setDrag(props.friction, props.friction);
 
+    // Water hazard check
     if (tileType === TileType.WATER && speed < WATER_SPEED_THRESHOLD) {
       this.handleWaterHazard();
+      return;
     }
+
+    // Apply terrain friction as damping multiplier (same as simulation)
+    this.groundVx *= props.friction;
+    this.groundVy *= props.friction;
+
+    // Integrate position
+    this.groundX += this.groundVx * dt;
+    this.groundY += this.groundVy * dt;
+
+    // Update safe position for non-water tiles
+    if (tileType !== TileType.WATER) {
+      this.lastSafePosition = { x: this.groundX, y: this.groundY };
+    }
+
+    this.ball.setPosition(this.groundX, this.groundY);
   }
 
   private drawShadow(): void {
@@ -184,13 +195,14 @@ export class BallPhysics {
 
   private handleWaterHazard(): void {
     this.strokeCount++;
-    this.ball.setVelocity(0, 0);
+    this.groundVx = 0;
+    this.groundVy = 0;
     this.z = 0;
     this.vz = 0;
     this.isAirborne = false;
+    this.isRolling = false;
     this.groundX = this.lastSafePosition.x;
     this.groundY = this.lastSafePosition.y;
-    this.ball.body.enable = true;
     this.ball.setPosition(this.lastSafePosition.x, this.lastSafePosition.y);
     EventBus.emit('water-hazard', this.strokeCount);
   }
@@ -246,9 +258,8 @@ export class BallPhysics {
 
   isStopped(): boolean {
     if (!this.ball) return true;
-    if (this.isAirborne) return false;
-    if (!this.ball.body || !this.ball.body.enable) return true;
-    return this.ball.body.speed < STOP_THRESHOLD;
+    if (this.isAirborne || this.isRolling) return false;
+    return true;
   }
 
   isInFlight(): boolean {
@@ -276,9 +287,7 @@ export class BallPhysics {
   }
 
   moveBallTo(worldX: number, worldY: number): void {
-    this.ball.body.enable = true;
     this.ball.setPosition(worldX, worldY);
-    this.ball.setVelocity(0, 0);
     this.groundX = worldX;
     this.groundY = worldY;
     this.groundVx = 0;
@@ -286,6 +295,7 @@ export class BallPhysics {
     this.z = 0;
     this.vz = 0;
     this.isAirborne = false;
+    this.isRolling = false;
     this.lastSafePosition = { x: worldX, y: worldY };
   }
 
