@@ -97,6 +97,12 @@ export class EditorScene extends Phaser.Scene {
         this.editorState.redo(this.isoMap);
       }
     });
+
+    // Pause
+    keyboard.on('keydown-ESC', () => {
+      this.scene.pause();
+      this.scene.launch('Pause', { callingScene: 'Editor' });
+    });
   }
 
   private setupEventListeners(): void {

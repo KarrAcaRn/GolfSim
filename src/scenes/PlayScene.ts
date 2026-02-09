@@ -69,6 +69,12 @@ export class PlayScene extends Phaser.Scene {
     // Event listeners
     this.setupEventListeners();
 
+    // Pause on ESC
+    this.input.keyboard!.on('keydown-ESC', () => {
+      this.scene.pause();
+      this.scene.launch('Pause', { callingScene: 'Play' });
+    });
+
     this.updateHUD();
   }
 

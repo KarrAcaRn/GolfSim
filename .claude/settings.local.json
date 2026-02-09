@@ -17,7 +17,8 @@
       "Bash(ssh:*)",
       "Bash(git pull:*)",
       "Bash(chmod:*)",
-      "Bash(/srv/projects/GolfSim/scripts/commit-and-push.sh \"Add auto-commit script and complete terrain effects + scoring\")"
+      "Bash(/srv/projects/GolfSim/scripts/commit-and-push.sh \"Add auto-commit script and complete terrain effects + scoring\")",
+      "Bash(/srv/projects/GolfSim/scripts/commit-and-push.sh:*)"
     ]
   }
 }

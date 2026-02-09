@@ -5,6 +5,7 @@ import { MainMenuScene } from './scenes/MainMenuScene';
 import { EditorScene } from './scenes/EditorScene';
 import { PlayScene } from './scenes/PlayScene';
 import { UIScene } from './scenes/UIScene';
+import { PauseScene } from './scenes/PauseScene';
 
 export const GAME_CONFIG: Phaser.Types.Core.GameConfig = {
   type: Phaser.WEBGL,
@@ -21,7 +22,7 @@ export const GAME_CONFIG: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [BootScene, PreloadScene, MainMenuScene, EditorScene, PlayScene, UIScene],
+  scene: [BootScene, PreloadScene, MainMenuScene, EditorScene, PlayScene, UIScene, PauseScene],
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
