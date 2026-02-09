@@ -23,11 +23,13 @@ export class BallPhysics {
   private strokeCount = 0;
   private lastSafePosition: { x: number; y: number } = { x: 0, y: 0 };
 
-  // Z-axis (height) simulation
+  // Z-axis (height) simulation — manual tracking during flight
   private z = 0;
   private vz = 0;
   private groundX = 0;
   private groundY = 0;
+  private groundVx = 0;
+  private groundVy = 0;
   private isAirborne = false;
   private shadowGraphics!: Phaser.GameObjects.Graphics;
 
@@ -59,6 +61,8 @@ export class BallPhysics {
 
     this.groundX = worldX;
     this.groundY = worldY;
+    this.groundVx = 0;
+    this.groundVy = 0;
     this.z = 0;
     this.vz = 0;
     this.isAirborne = false;
@@ -75,21 +79,28 @@ export class BallPhysics {
     const horizontalPower = power * Math.cos(loftRad);
     this.vz = power * Math.sin(loftRad);
 
-    const vx = Math.cos(angle) * horizontalPower;
-    const vy = Math.sin(angle) * horizontalPower;
-    this.ball.setVelocity(vx, vy);
+    this.groundVx = Math.cos(angle) * horizontalPower;
+    this.groundVy = Math.sin(angle) * horizontalPower;
 
     this.isAirborne = this.vz > MIN_BOUNCE_VZ;
     this.z = 0;
     this.groundX = this.ball.x;
     this.groundY = this.ball.y;
 
+    if (this.isAirborne) {
+      // Disable physics body during flight — we track position manually
+      this.ball.body.enable = false;
+    } else {
+      // Low loft: just roll on the ground via physics
+      this.ball.setVelocity(this.groundVx, this.groundVy);
+    }
+
     this.strokeCount++;
     EventBus.emit('stroke-taken', this.strokeCount);
   }
 
   update(delta: number): void {
-    if (!this.ball || !this.ball.body) return;
+    if (!this.ball) return;
 
     const dt = delta / 1000;
 
@@ -103,42 +114,40 @@ export class BallPhysics {
   }
 
   private updateAirborne(dt: number): void {
-    // Apply gravity
+    // Manual position integration — no Phaser physics involved
+    this.groundX += this.groundVx * dt;
+    this.groundY += this.groundVy * dt;
+
+    // Apply gravity to vertical velocity
     this.vz -= GRAVITY * dt;
     this.z += this.vz * dt;
 
-    // Track ground position from physics body (horizontal movement continues)
-    this.groundX = this.ball.x;
-    this.groundY = this.ball.y;
-
-    // Offset ball sprite visually upward by z
-    this.ball.y = this.groundY - this.z;
-
-    // No terrain drag while airborne
-    this.ball.setDrag(1, 1);
+    // Position ball sprite: ground position offset upward by z
+    this.ball.setPosition(this.groundX, this.groundY - this.z);
 
     // Check landing
     if (this.z <= 0 && this.vz < 0) {
       this.z = 0;
-      this.ball.y = this.groundY;
 
-      // Bounce
       if (Math.abs(this.vz) > MIN_BOUNCE_VZ) {
+        // Bounce: invert and dampen vertical velocity, reduce horizontal
         this.vz = -this.vz * BOUNCE_FACTOR;
-        // Reduce horizontal velocity on bounce
-        const currentVx = this.ball.body.velocity.x * BOUNCE_FRICTION;
-        const currentVy = this.ball.body.velocity.y * BOUNCE_FRICTION;
-        this.ball.setVelocity(currentVx, currentVy);
+        this.groundVx *= BOUNCE_FRICTION;
+        this.groundVy *= BOUNCE_FRICTION;
       } else {
-        // Done bouncing, switch to ground mode
+        // Done bouncing — hand off to Phaser physics for ground rolling
         this.vz = 0;
         this.isAirborne = false;
         this.ball.setPosition(this.groundX, this.groundY);
+        this.ball.body.enable = true;
+        this.ball.setVelocity(this.groundVx, this.groundVy);
       }
     }
   }
 
   private updateGround(): void {
+    if (!this.ball.body || !this.ball.body.enable) return;
+
     this.groundX = this.ball.x;
     this.groundY = this.ball.y;
 
@@ -161,7 +170,6 @@ export class BallPhysics {
     this.shadowGraphics.clear();
     if (!this.isAirborne || this.z <= 1) return;
 
-    // Draw an ellipse shadow on the ground
     const shadowScale = Math.max(0.3, 1 - this.z / 300);
     const rx = 6 * shadowScale;
     const ry = 3 * shadowScale;
@@ -179,6 +187,7 @@ export class BallPhysics {
     this.isAirborne = false;
     this.groundX = this.lastSafePosition.x;
     this.groundY = this.lastSafePosition.y;
+    this.ball.body.enable = true;
     this.ball.setPosition(this.lastSafePosition.x, this.lastSafePosition.y);
     EventBus.emit('water-hazard', this.strokeCount);
   }
@@ -188,10 +197,6 @@ export class BallPhysics {
     return this.isoMap.getTileAt(tileX, tileY);
   }
 
-  /**
-   * Simulate the trajectory for a given shot to generate preview points.
-   * Returns an array of {x, y, z} world-space points.
-   */
   simulateTrajectory(
     startX: number,
     startY: number,
@@ -237,8 +242,9 @@ export class BallPhysics {
   }
 
   isStopped(): boolean {
-    if (!this.ball || !this.ball.body) return true;
+    if (!this.ball) return true;
     if (this.isAirborne) return false;
+    if (!this.ball.body || !this.ball.body.enable) return true;
     return this.ball.body.speed < STOP_THRESHOLD;
   }
 
@@ -267,10 +273,13 @@ export class BallPhysics {
   }
 
   moveBallTo(worldX: number, worldY: number): void {
+    this.ball.body.enable = true;
     this.ball.setPosition(worldX, worldY);
     this.ball.setVelocity(0, 0);
     this.groundX = worldX;
     this.groundY = worldY;
+    this.groundVx = 0;
+    this.groundVy = 0;
     this.z = 0;
     this.vz = 0;
     this.isAirborne = false;
