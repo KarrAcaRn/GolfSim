@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:docs.phaser.io)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(git init:*)",
+      "Bash(git remote add:*)",
+      "Bash(git branch:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nInitial project setup: Phaser.js golf course management game\n\n- Vite + TypeScript + Phaser 3 project scaffolding\n- Isometric 64x32 tile map system with programmatic placeholder textures\n- Camera controls \\(WASD/arrows, mouse drag, scroll zoom\\)\n- Course editor with terrain painting \\(7 tile types\\), hole placement\n- Play mode with ball physics, drag-aim shooting, terrain effects\n- i18n system \\(EN/DE\\) with custom t\\(\\) function\n- Save/load via localStorage\n- UI overlay scene with toolbar\n- Main menu with language toggle\n- ScoreCard component for end-of-round display\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git config:*)",
+      "Bash(git push:*)",
+      "Bash(git remote set-url:*)",
+      "Bash(gh auth:*)",
+      "Bash(ssh:*)",
+      "Bash(git pull:*)",
+      "Bash(chmod:*)",
+      "Bash(/srv/projects/GolfSim/scripts/commit-and-push.sh \"Add auto-commit script and complete terrain effects + scoring\")"
+    ]
+  }
+}
