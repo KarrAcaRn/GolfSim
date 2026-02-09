@@ -10,10 +10,10 @@ export const HOLE_SINK_RADIUS = 10;
 
 // Ball flight physics
 export const GRAVITY = 400;
-export const BOUNCE_FACTOR = 0.3;
-export const BOUNCE_FRICTION = 0.45;
+export const BOUNCE_FACTOR = 0.4;
+export const BOUNCE_FRICTION = 0.6;
 export const MIN_BOUNCE_VZ = 15;
-export const LANDING_SPEED_FACTOR = 0.35;
+export const LANDING_SPEED_FACTOR = 0.25;
 
 // Loft (launch angle)
 export const DEFAULT_LOFT = 30;
