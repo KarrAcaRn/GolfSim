@@ -87,4 +87,4 @@ export const CLUBS: Club[] = [
 ];
 
 export const DEFAULT_CLUB_INDEX = 2; // Iron
-export const SPIN_DECAY = 0.6;
+export const SPIN_DECAY = 0.4;

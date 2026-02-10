@@ -245,9 +245,14 @@ export class AimingSystem {
     const g = Math.floor((1 - normalizedPower) * 255);
     const color = (r << 16) | (g << 8) | 0;
 
-    // Direction arrow - length capped to landing distance
-    const distToMouse = Math.sqrt((mouseX - ballX) ** 2 + (mouseY - ballY) ** 2);
-    const lineLength = Math.min(30 + normalizedPower * 60, distToMouse * 0.8);
+    // Draw trajectory first to get landing point
+    const landingPt = this.drawTrajectoryPreview(ballX, ballY, angle, power, color);
+
+    // Direction arrow - use actual landing distance from simulation
+    const landingDist = landingPt
+      ? Math.sqrt((landingPt.x - ballX) ** 2 + (landingPt.y - ballY) ** 2)
+      : 30 + normalizedPower * 60;
+    const lineLength = Math.min(landingDist * 0.4, 90);
     const endX = ballX + Math.cos(angle) * lineLength;
     const endY = ballY + Math.sin(angle) * lineLength;
 
@@ -271,9 +276,6 @@ export class AimingSystem {
     this.aimGraphics.lineBetween(mouseX - 12, mouseY, mouseX + 12, mouseY);
     this.aimGraphics.lineBetween(mouseX, mouseY - 12, mouseX, mouseY + 12);
 
-    // Draw trajectory
-    this.drawTrajectoryPreview(ballX, ballY, angle, power, color);
-
     // Info text
     const powerPercent = Math.round(normalizedPower * 100);
     const clubName = t(club.nameKey as any);
@@ -288,7 +290,7 @@ export class AimingSystem {
     angle: number,
     power: number,
     color: number
-  ): void {
+  ): { x: number; y: number } | null {
     const spinDirection = this.shotPanel.getSelectedSpin();
     const groundPos = this.ballPhysics.getGroundPosition();
     const { tileX, tileY } = this.isoMap.worldToTile(groundPos.x, groundPos.y);
@@ -300,7 +302,7 @@ export class AimingSystem {
       startX, startY, angle, power, this.currentClub.loftDegrees,
       spinDirection, effectiveSpinAngle
     );
-    if (points.length === 0) return;
+    if (points.length === 0) return null;
 
     for (let i = 0; i < points.length; i++) {
       const pt = points[i];
@@ -329,6 +331,8 @@ export class AimingSystem {
     this.trajectoryGraphics.lineStyle(1, 0xffff00, 0.6);
     this.trajectoryGraphics.lineBetween(lastPt.x - 4, lastPt.y - 4, lastPt.x + 4, lastPt.y + 4);
     this.trajectoryGraphics.lineBetween(lastPt.x + 4, lastPt.y - 4, lastPt.x - 4, lastPt.y + 4);
+
+    return { x: lastPt.x, y: lastPt.y };
   }
 
   private clearAimGraphics(): void {

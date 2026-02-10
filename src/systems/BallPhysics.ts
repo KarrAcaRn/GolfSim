@@ -5,7 +5,7 @@ import { EventBus } from '../utils/EventBus';
 import { SPIN_DECAY } from '../models/Club';
 import {
   GRAVITY, MIN_BOUNCE_VZ,
-  TRAJECTORY_STEPS, TRAJECTORY_DT,
+  TRAJECTORY_DT,
 } from '../utils/Constants';
 
 const STOP_THRESHOLD = 3;
@@ -15,6 +15,17 @@ export interface TrajectoryPoint {
   x: number;
   y: number;
   z: number;
+}
+
+interface BallState {
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  spinDirection: number;
+  spinAngle: number;
 }
 
 export class BallPhysics {
@@ -141,22 +152,24 @@ export class BallPhysics {
       const props = TILE_PROPERTIES[tileType];
 
       if (Math.abs(this.vz) > MIN_BOUNCE_VZ && props.bounceFactor > 0) {
-        // Bounce: invert and dampen vertical velocity, reduce horizontal
-        this.vz = -this.vz * props.bounceFactor;
-        this.groundVx *= BOUNCE_HORIZONTAL_DAMPING;
-        this.groundVy *= BOUNCE_HORIZONTAL_DAMPING;
+        // Bounce: create temporary state, apply bounce logic, copy results back
+        const state: BallState = {
+          x: this.groundX,
+          y: this.groundY,
+          z: this.z,
+          vx: this.groundVx,
+          vy: this.groundVy,
+          vz: this.vz,
+          spinDirection: this.spinDirection,
+          spinAngle: this.spinAngle
+        };
 
-        // Apply spin rotation
-        if (this.spinDirection !== 0 && this.spinAngle > 0) {
-          const spinRad = Phaser.Math.DegToRad(this.spinAngle * this.spinDirection);
-          const cos = Math.cos(spinRad);
-          const sin = Math.sin(spinRad);
-          const newVx = this.groundVx * cos - this.groundVy * sin;
-          const newVy = this.groundVx * sin + this.groundVy * cos;
-          this.groundVx = newVx;
-          this.groundVy = newVy;
-          this.spinAngle *= SPIN_DECAY; // decay: retain 60% per bounce
-        }
+        this.applyBounce(state, props);
+
+        this.groundVx = state.vx;
+        this.groundVy = state.vy;
+        this.vz = state.vz;
+        this.spinAngle = state.spinAngle;
       } else {
         // Done bouncing — transition to manual ground rolling
         this.vz = 0;
@@ -181,7 +194,20 @@ export class BallPhysics {
       return;
     }
 
-    const speed = Math.sqrt(this.groundVx * this.groundVx + this.groundVy * this.groundVy);
+    // Create temporary state
+    const state: BallState = {
+      x: this.groundX,
+      y: this.groundY,
+      z: this.z,
+      vx: this.groundVx,
+      vy: this.groundVy,
+      vz: this.vz,
+      spinDirection: this.spinDirection,
+      spinAngle: this.spinAngle
+    };
+
+    // Apply ground roll step and get speed before friction
+    const speed = this.applyGroundRollStep(state, dt);
 
     if (speed < STOP_THRESHOLD) {
       this.groundVx = 0;
@@ -190,17 +216,11 @@ export class BallPhysics {
       return;
     }
 
-    // Get terrain friction at current position
-    const tileType = this.getTerrainAtWorld(this.groundX, this.groundY);
-    const props = TILE_PROPERTIES[tileType];
-
-    // Apply terrain friction as damping multiplier (same as simulation)
-    this.groundVx *= props.friction;
-    this.groundVy *= props.friction;
-
-    // Integrate position
-    this.groundX += this.groundVx * dt;
-    this.groundY += this.groundVy * dt;
+    // Copy results back
+    this.groundX = state.x;
+    this.groundY = state.y;
+    this.groundVx = state.vx;
+    this.groundVy = state.vy;
 
     // Check hazard after movement
     if (this.isHazard(this.groundX, this.groundY)) {
@@ -223,6 +243,46 @@ export class BallPhysics {
 
     this.shadowGraphics.fillStyle(0x000000, alpha);
     this.shadowGraphics.fillEllipse(this.groundX, this.groundY, rx * 2, ry * 2);
+  }
+
+  private applyBounce(state: BallState, terrainProps: typeof TILE_PROPERTIES[TileType]): void {
+    // Invert and dampen vertical velocity
+    state.vz = -state.vz * terrainProps.bounceFactor;
+
+    // Dampen horizontal velocity
+    state.vx *= BOUNCE_HORIZONTAL_DAMPING;
+    state.vy *= BOUNCE_HORIZONTAL_DAMPING;
+
+    // Apply spin rotation
+    if (state.spinDirection !== 0 && state.spinAngle > 0) {
+      const spinRad = Phaser.Math.DegToRad(state.spinAngle * state.spinDirection);
+      const cos = Math.cos(spinRad);
+      const sin = Math.sin(spinRad);
+      const newVx = state.vx * cos - state.vy * sin;
+      const newVy = state.vx * sin + state.vy * cos;
+      state.vx = newVx;
+      state.vy = newVy;
+      state.spinAngle *= SPIN_DECAY;
+    }
+  }
+
+  private applyGroundRollStep(state: BallState, dt: number): number {
+    // Get terrain friction at current position
+    const tileType = this.getTerrainAtWorld(state.x, state.y);
+    const props = TILE_PROPERTIES[tileType];
+
+    // Calculate speed before friction
+    const speed = Math.sqrt(state.vx * state.vx + state.vy * state.vy);
+
+    // Apply terrain friction
+    state.vx *= props.friction;
+    state.vy *= props.friction;
+
+    // Integrate position
+    state.x += state.vx * dt;
+    state.y += state.vy * dt;
+
+    return speed;
   }
 
   private handleWaterHazard(): void {
@@ -264,61 +324,50 @@ export class BallPhysics {
     const points: TrajectoryPoint[] = [];
     const loftRad = Phaser.Math.DegToRad(loftDegrees);
     const horizontalPower = power * Math.cos(loftRad);
-    let vz = power * Math.sin(loftRad);
 
-    let vx = Math.cos(dirAngle) * horizontalPower;
-    let vy = Math.sin(dirAngle) * horizontalPower;
-    let x = startX;
-    let y = startY;
-    let z = 0;
+    const state: BallState = {
+      x: startX,
+      y: startY,
+      z: 0,
+      vx: Math.cos(dirAngle) * horizontalPower,
+      vy: Math.sin(dirAngle) * horizontalPower,
+      vz: power * Math.sin(loftRad),
+      spinDirection: spinDirection,
+      spinAngle: spinAngle
+    };
+
     let landed = false;
-    let bounces = 0;
-    let currentSpinAngle = spinAngle;
 
     // If loft is too low for flight (same check as shoot()), skip flight and go straight to rolling
-    const skipFlight = vz <= MIN_BOUNCE_VZ;
+    const skipFlight = state.vz <= MIN_BOUNCE_VZ;
 
     if (!skipFlight) {
-      for (let i = 0; i < TRAJECTORY_STEPS && !landed; i++) {
-        x += vx * TRAJECTORY_DT;
-        y += vy * TRAJECTORY_DT;
-        vz -= GRAVITY * TRAJECTORY_DT;
-        z += vz * TRAJECTORY_DT;
+      const maxFlightSteps = 500; // generous safety limit
+      for (let i = 0; i < maxFlightSteps && !landed; i++) {
+        state.x += state.vx * TRAJECTORY_DT;
+        state.y += state.vy * TRAJECTORY_DT;
+        state.vz -= GRAVITY * TRAJECTORY_DT;
+        state.z += state.vz * TRAJECTORY_DT;
 
-        if (z <= 0 && vz < 0) {
-          z = 0;
+        if (state.z <= 0 && state.vz < 0) {
+          state.z = 0;
           // Get actual terrain at bounce position
-          const terrainProps = TILE_PROPERTIES[this.getTerrainAtWorld(x, y)];
+          const terrainProps = TILE_PROPERTIES[this.getTerrainAtWorld(state.x, state.y)];
 
-          if (Math.abs(vz) > MIN_BOUNCE_VZ && terrainProps.bounceFactor > 0 && bounces < 3) {
-            vz = -vz * terrainProps.bounceFactor;
-            vx *= BOUNCE_HORIZONTAL_DAMPING;
-            vy *= BOUNCE_HORIZONTAL_DAMPING;
-            bounces++;
-
-            // Apply spin rotation (same as actual physics)
-            if (spinDirection !== 0 && currentSpinAngle > 0) {
-              const spinRad = Phaser.Math.DegToRad(currentSpinAngle * spinDirection);
-              const cos = Math.cos(spinRad);
-              const sin = Math.sin(spinRad);
-              const newVx = vx * cos - vy * sin;
-              const newVy = vx * sin + vy * cos;
-              vx = newVx;
-              vy = newVy;
-              currentSpinAngle *= SPIN_DECAY;
-            }
+          if (Math.abs(state.vz) > MIN_BOUNCE_VZ && terrainProps.bounceFactor > 0) {
+            this.applyBounce(state, terrainProps);
           } else {
             landed = true;
           }
         }
 
-        points.push({ x, y, z: Math.max(0, z) });
+        points.push({ x: state.x, y: state.y, z: Math.max(0, state.z) });
       }
 
       // After flight: apply landing speed reduction based on actual terrain
-      const landingProps = TILE_PROPERTIES[this.getTerrainAtWorld(x, y)];
-      vx *= landingProps.landingSpeedFactor;
-      vy *= landingProps.landingSpeedFactor;
+      const landingProps = TILE_PROPERTIES[this.getTerrainAtWorld(state.x, state.y)];
+      state.vx *= landingProps.landingSpeedFactor;
+      state.vy *= landingProps.landingSpeedFactor;
     }
     // If skipFlight: vx/vy keep full power (same as real shoot() for low loft)
 
@@ -326,16 +375,10 @@ export class BallPhysics {
     const ROLL_DT = TRAJECTORY_DT;
     const maxRollSteps = 200;
     for (let i = 0; i < maxRollSteps; i++) {
-      const speed = Math.sqrt(vx * vx + vy * vy);
+      const speed = this.applyGroundRollStep(state, ROLL_DT);
       if (speed < STOP_THRESHOLD) break;
 
-      const rollProps = TILE_PROPERTIES[this.getTerrainAtWorld(x, y)];
-      vx *= rollProps.friction;
-      vy *= rollProps.friction;
-      x += vx * ROLL_DT;
-      y += vy * ROLL_DT;
-
-      points.push({ x, y, z: 0 });
+      points.push({ x: state.x, y: state.y, z: 0 });
     }
 
     return points;
