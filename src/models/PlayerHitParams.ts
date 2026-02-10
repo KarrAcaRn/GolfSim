@@ -10,5 +10,5 @@ export interface PlayerHitParams {
 export const DEFAULT_HIT_PARAMS: PlayerHitParams = {
   hitSpeedDifferenceMin: -0.10,
   hitSpeedDifferenceMax: 0.01,
-  hitAccuracy: 0.5,
+  hitAccuracy: 2.0,
 };
