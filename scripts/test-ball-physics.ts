@@ -6,8 +6,16 @@
 // Constants (copied from src/utils/Constants.ts)
 const GRAVITY = 400;
 const MIN_BOUNCE_VZ = 15;
-const MAX_POWER = 500;
 const BOUNCE_HORIZONTAL_DAMPING = 0.6;
+
+// Club data (copied from src/models/Club.ts)
+const CLUBS = [
+  { name: 'Driver',     maxPower: 600, loft: 12 },
+  { name: 'Wood',       maxPower: 500, loft: 20 },
+  { name: 'Iron',       maxPower: 400, loft: 35 },
+  { name: 'Sand Wedge', maxPower: 300, loft: 55 },
+  { name: 'Putter',     maxPower: 200, loft: 0  },
+];
 
 // Terrain properties (copied from src/models/TileTypes.ts)
 const TERRAIN: Record<string, { friction: number; bounceFactor: number; landingSpeedFactor: number }> = {
@@ -117,16 +125,21 @@ function simulate(power: number, loftDeg: number, dirAngle: number = 0): SimResu
 // === RUN TESTS ===
 console.log('=== BALL PHYSICS SIMULATION ===\n');
 
-const tests = [
-  { label: 'Schwacher Putt (10% Power, 10° Loft)',   power: MAX_POWER * 0.1, loft: 10 },
-  { label: 'Mittlerer Putt (20% Power, 10° Loft)',   power: MAX_POWER * 0.2, loft: 10 },
-  { label: 'Chip Shot (30% Power, 45° Loft)',         power: MAX_POWER * 0.3, loft: 45 },
-  { label: 'Mittlerer Schlag (50% Power, 30° Loft)',  power: MAX_POWER * 0.5, loft: 30 },
-  { label: 'Starker Schlag (80% Power, 30° Loft)',    power: MAX_POWER * 0.8, loft: 30 },
-  { label: 'Volle Power (100% Power, 30° Loft)',      power: MAX_POWER * 1.0, loft: 30 },
-  { label: 'Hoher Lob (60% Power, 60° Loft)',         power: MAX_POWER * 0.6, loft: 60 },
-  { label: 'Flacher Drive (100% Power, 15° Loft)',    power: MAX_POWER * 1.0, loft: 15 },
-];
+const tests: Array<{ label: string; power: number; loft: number }> = [];
+
+// Test each club at 50% and 100% power
+for (const club of CLUBS) {
+  tests.push({
+    label: `${club.name} - 50% Power`,
+    power: club.maxPower * 0.5,
+    loft: club.loft
+  });
+  tests.push({
+    label: `${club.name} - 100% Power`,
+    power: club.maxPower * 1.0,
+    loft: club.loft
+  });
+}
 
 for (const t of tests) {
   const r = simulate(t.power, t.loft);

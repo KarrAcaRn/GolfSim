@@ -36,5 +36,11 @@
   "play.overPar": "{{count}} Over Par",
   "play.atPar": "At Par",
   "play.backToEditor": "Back to Editor",
-  "play.waterHazard": "Water Hazard! +1 Stroke"
+  "play.waterHazard": "Water Hazard! +1 Stroke",
+  "clubs.driver": "Driver",
+  "clubs.wood": "Wood",
+  "clubs.iron": "Iron",
+  "clubs.sandWedge": "Sand Wedge",
+  "clubs.putter": "Putter",
+  "clubs.teeOnly": "Driver can only be used on the tee!"
 }

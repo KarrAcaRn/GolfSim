@@ -36,5 +36,11 @@
   "play.overPar": "{{count}} ueber Par",
   "play.atPar": "Par gespielt",
   "play.backToEditor": "Zurueck zum Editor",
-  "play.waterHazard": "Wasserhindernis! +1 Schlag"
+  "play.waterHazard": "Wasserhindernis! +1 Schlag",
+  "clubs.driver": "Driver",
+  "clubs.wood": "Holz",
+  "clubs.iron": "Eisen",
+  "clubs.sandWedge": "Sandwedge",
+  "clubs.putter": "Putter",
+  "clubs.teeOnly": "Der Driver kann nur auf dem Tee verwendet werden!"
 }

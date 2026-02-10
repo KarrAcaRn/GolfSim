@@ -61,7 +61,7 @@ export class PlayScene extends Phaser.Scene {
     this.cameras.main.centerOn(teePos.x, teePos.y);
 
     // Aiming system
-    this.aimingSystem = new AimingSystem(this, this.ballPhysics);
+    this.aimingSystem = new AimingSystem(this, this.ballPhysics, this.isoMap);
 
     // HUD
     this.createHUD();

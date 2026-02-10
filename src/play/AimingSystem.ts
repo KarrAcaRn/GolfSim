@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
 import { BallPhysics } from '../systems/BallPhysics';
-import {
-  MAX_POWER, MIN_POWER_THRESHOLD, MAX_DRAG_DISTANCE,
-  DEFAULT_LOFT, MIN_LOFT, MAX_LOFT, LOFT_STEP,
-} from '../utils/Constants';
+import { MIN_POWER_THRESHOLD, MAX_DRAG_DISTANCE } from '../utils/Constants';
 import { EventBus } from '../utils/EventBus';
+import { Club, CLUBS, DEFAULT_CLUB_INDEX } from '../models/Club';
+import { TileType } from '../models/TileTypes';
+import { IsometricMap } from '../systems/IsometricMap';
+import { t } from '../i18n/i18n';
 
 export enum AimState {
   IDLE = 'idle',
@@ -15,16 +16,18 @@ export enum AimState {
 export class AimingSystem {
   private scene: Phaser.Scene;
   private ballPhysics: BallPhysics;
+  private isoMap: IsometricMap;
   private state: AimState = AimState.IDLE;
   private dragStart: Phaser.Math.Vector2 | null = null;
   private aimGraphics: Phaser.GameObjects.Graphics;
   private trajectoryGraphics: Phaser.GameObjects.Graphics;
   private powerText: Phaser.GameObjects.Text;
-  private loftAngle: number = DEFAULT_LOFT;
+  private clubIndex: number = DEFAULT_CLUB_INDEX;
 
-  constructor(scene: Phaser.Scene, ballPhysics: BallPhysics) {
+  constructor(scene: Phaser.Scene, ballPhysics: BallPhysics, isoMap: IsometricMap) {
     this.scene = scene;
     this.ballPhysics = ballPhysics;
+    this.isoMap = isoMap;
 
     this.aimGraphics = scene.add.graphics();
     this.aimGraphics.setDepth(900);
@@ -43,6 +46,38 @@ export class AimingSystem {
     scene.input.on('pointermove', this.onPointerMove, this);
     scene.input.on('pointerup', this.onPointerUp, this);
     scene.input.on('wheel', this.onWheel, this);
+
+    // Number keys to select clubs directly (1-5)
+    scene.input.keyboard!.on('keydown-ONE', () => this.selectClub(0));
+    scene.input.keyboard!.on('keydown-TWO', () => this.selectClub(1));
+    scene.input.keyboard!.on('keydown-THREE', () => this.selectClub(2));
+    scene.input.keyboard!.on('keydown-FOUR', () => this.selectClub(3));
+    scene.input.keyboard!.on('keydown-FIVE', () => this.selectClub(4));
+  }
+
+  get currentClub(): Club {
+    return CLUBS[this.clubIndex];
+  }
+
+  private selectClub(index: number): void {
+    if (index < 0 || index >= CLUBS.length) return;
+
+    const club = CLUBS[index];
+
+    // Check if trying to select driver and not on tee
+    if (club.teeOnly && !this.isOnTee()) {
+      EventBus.emit('club-restricted', t('clubs.teeOnly'));
+      return;
+    }
+
+    this.clubIndex = index;
+  }
+
+  private isOnTee(): boolean {
+    const groundPos = this.ballPhysics.getGroundPosition();
+    const { tileX, tileY } = this.isoMap.worldToTile(groundPos.x, groundPos.y);
+    const tileType = this.isoMap.getTileAt(tileX, tileY);
+    return tileType === TileType.TEE;
   }
 
   private onPointerDown(pointer: Phaser.Input.Pointer): void {
@@ -72,11 +107,11 @@ export class AimingSystem {
       Phaser.Math.Distance.Between(this.dragStart.x, this.dragStart.y, pointer.worldX, pointer.worldY),
       MAX_DRAG_DISTANCE
     );
-    const power = (distance / MAX_DRAG_DISTANCE) * MAX_POWER;
+    const power = (distance / MAX_DRAG_DISTANCE) * this.currentClub.maxPower;
 
     if (power > MIN_POWER_THRESHOLD) {
       const angle = Math.atan2(dy, dx);
-      this.ballPhysics.shoot(angle, power, this.loftAngle);
+      this.ballPhysics.shoot(angle, power, this.currentClub.loftDegrees);
       this.state = AimState.ROLLING;
     } else {
       this.state = AimState.IDLE;
@@ -96,11 +131,17 @@ export class AimingSystem {
   ): void {
     if (this.state !== AimState.AIMING) return;
 
-    // Scroll up = more loft, scroll down = less loft
+    // Scroll up = previous club, scroll down = next club
     if (deltaY < 0) {
-      this.loftAngle = Math.min(this.loftAngle + LOFT_STEP, MAX_LOFT);
+      // Previous club
+      let newIndex = this.clubIndex - 1;
+      if (newIndex < 0) newIndex = CLUBS.length - 1;
+      this.selectClub(newIndex);
     } else {
-      this.loftAngle = Math.max(this.loftAngle - LOFT_STEP, MIN_LOFT);
+      // Next club
+      let newIndex = this.clubIndex + 1;
+      if (newIndex >= CLUBS.length) newIndex = 0;
+      this.selectClub(newIndex);
     }
   }
 
@@ -119,7 +160,7 @@ export class AimingSystem {
       Phaser.Math.Distance.Between(this.dragStart.x, this.dragStart.y, pointerX, pointerY),
       MAX_DRAG_DISTANCE
     );
-    const power = (distance / MAX_DRAG_DISTANCE) * MAX_POWER;
+    const power = (distance / MAX_DRAG_DISTANCE) * this.currentClub.maxPower;
     const normalizedPower = distance / MAX_DRAG_DISTANCE;
 
     // Color: green (weak) -> yellow -> red (strong)
@@ -151,9 +192,10 @@ export class AimingSystem {
       this.drawTrajectoryPreview(ball.x, ball.y, angle, power, color);
     }
 
-    // Info text: power + loft
+    // Info text: club name + power
     const powerPercent = Math.round(normalizedPower * 100);
-    this.powerText.setText(`${powerPercent}%  Loft: ${this.loftAngle}°`);
+    const clubName = t(this.currentClub.nameKey as any);
+    this.powerText.setText(`${clubName} | Power: ${powerPercent}%`);
     this.powerText.setPosition(ball.x + 15, ball.y - 25);
     this.powerText.setVisible(true);
   }
@@ -165,7 +207,7 @@ export class AimingSystem {
     power: number,
     color: number
   ): void {
-    const points = this.ballPhysics.simulateTrajectory(startX, startY, angle, power, this.loftAngle);
+    const points = this.ballPhysics.simulateTrajectory(startX, startY, angle, power, this.currentClub.loftDegrees);
     if (points.length === 0) return;
 
     // Draw dots along the trajectory ground path
