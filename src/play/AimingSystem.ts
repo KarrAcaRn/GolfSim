@@ -115,12 +115,24 @@ export class AimingSystem {
     if (distance > 5) {
       const angle = Math.atan2(dy, dx);
 
-      // Apply player hit variance
-      const speedFactor = 1 + this.hitParams.hitSpeedDifferenceMin +
-        Math.random() * (this.hitParams.hitSpeedDifferenceMax - this.hitParams.hitSpeedDifferenceMin);
+      // Get terrain under the ball
+      const groundPos = this.ballPhysics.getGroundPosition();
+      const { tileX, tileY } = this.isoMap.worldToTile(groundPos.x, groundPos.y);
+      const tileType = this.isoMap.getTileAt(tileX, tileY);
+
+      // Look up terrain modifier for current club
+      const terrainMod = this.currentClub.terrainModifiers[tileType];
+
+      // Combine base params with terrain modifier
+      const speedMin = this.hitParams.hitSpeedDifferenceMin + (terrainMod?.hitSpeedDifferenceMin ?? 0);
+      const speedMax = this.hitParams.hitSpeedDifferenceMax + (terrainMod?.hitSpeedDifferenceMax ?? 0);
+      const accuracy = this.hitParams.hitAccuracy + (terrainMod?.hitAccuracy ?? 0);
+
+      // Apply player hit variance with terrain modifiers
+      const speedFactor = 1 + speedMin + Math.random() * (speedMax - speedMin);
       const actualPower = power * speedFactor;
 
-      const maxDeviationRad = Phaser.Math.DegToRad(this.hitParams.hitAccuracy);
+      const maxDeviationRad = Phaser.Math.DegToRad(accuracy);
       const actualAngle = angle + (Math.random() * 2 - 1) * maxDeviationRad;
 
       this.ballPhysics.shoot(actualAngle, actualPower, this.currentClub.loftDegrees);
