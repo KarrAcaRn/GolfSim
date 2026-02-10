@@ -3,6 +3,7 @@ import { IsometricMap } from '../systems/IsometricMap';
 import { CameraController } from '../systems/CameraController';
 import { BallPhysics } from '../systems/BallPhysics';
 import { AimingSystem } from '../play/AimingSystem';
+import { PlayerCharacter } from '../play/PlayerCharacter';
 import { HoleData } from '../models/HoleData';
 import { CourseData } from '../models/CourseData';
 import { EventBus } from '../utils/EventBus';
@@ -16,6 +17,7 @@ export class PlayScene extends Phaser.Scene {
   private cameraController!: CameraController;
   private ballPhysics!: BallPhysics;
   private aimingSystem!: AimingSystem;
+  private playerCharacter!: PlayerCharacter;
   private shotPanel!: ShotPanel;
   private courseData!: CourseData;
 
@@ -68,6 +70,14 @@ export class PlayScene extends Phaser.Scene {
 
     // Aiming system
     this.aimingSystem = new AimingSystem(this, this.ballPhysics, this.isoMap, this.shotPanel);
+
+    // Player character
+    this.playerCharacter = new PlayerCharacter(this);
+
+    // Position player near ball for first shot
+    const ballPos = this.ballPhysics.getGroundPosition();
+    this.playerCharacter.setPosition(ballPos.x - 30, ballPos.y - 15);
+    this.playerCharacter.walkTo(ballPos.x, ballPos.y);
 
     // HUD
     this.createHUD();
@@ -140,6 +150,9 @@ export class PlayScene extends Phaser.Scene {
 
     EventBus.on('ball-stopped', () => {
       this.checkHoleCompletion();
+      // Make player walk to ball
+      const groundPos = this.ballPhysics.getGroundPosition();
+      this.playerCharacter.walkTo(groundPos.x, groundPos.y);
     });
   }
 
@@ -189,6 +202,11 @@ export class PlayScene extends Phaser.Scene {
     this.ballPhysics.moveBallTo(teePos.x, teePos.y);
     this.ballPhysics.resetStrokeCount();
     this.cameras.main.centerOn(teePos.x, teePos.y);
+
+    // Position player near ball and walk to it
+    this.playerCharacter.setPosition(teePos.x - 30, teePos.y - 15);
+    this.playerCharacter.walkTo(teePos.x, teePos.y);
+
     this.updateHUD();
   }
 
@@ -264,6 +282,7 @@ export class PlayScene extends Phaser.Scene {
     this.cameraController.update(delta);
     this.ballPhysics.update(delta);
     this.aimingSystem.update();
+    this.playerCharacter.update(delta);
 
     // Follow ball's ground position while in motion
     if (!this.ballPhysics.isStopped()) {
@@ -276,6 +295,7 @@ export class PlayScene extends Phaser.Scene {
     EventBus.removeAllListeners();
     this.ballPhysics.destroy();
     this.aimingSystem.destroy();
+    this.playerCharacter.destroy();
     this.shotPanel.destroy();
   }
 }
