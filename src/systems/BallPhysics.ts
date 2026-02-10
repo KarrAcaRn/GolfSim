@@ -311,6 +311,29 @@ export class BallPhysics {
       points.push({ x, y, z: Math.max(0, z) });
     }
 
+    // After the flight loop ends (landed = true or steps exhausted)
+    // Apply landing speed factor and simulate ground rolling
+    const defaultLandingFactor = TILE_PROPERTIES[TileType.FAIRWAY].landingSpeedFactor;
+    const defaultFriction = TILE_PROPERTIES[TileType.FAIRWAY].friction;
+
+    vx *= defaultLandingFactor;
+    vy *= defaultLandingFactor;
+
+    // Simulate ground rolling
+    const ROLL_DT = TRAJECTORY_DT;
+    const maxRollSteps = 200; // prevent infinite loop
+    for (let i = 0; i < maxRollSteps; i++) {
+      const speed = Math.sqrt(vx * vx + vy * vy);
+      if (speed < STOP_THRESHOLD) break;
+
+      vx *= defaultFriction;
+      vy *= defaultFriction;
+      x += vx * ROLL_DT;
+      y += vy * ROLL_DT;
+
+      points.push({ x, y, z: 0 });
+    }
+
     return points;
   }
 
