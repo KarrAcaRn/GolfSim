@@ -275,49 +275,53 @@ export class BallPhysics {
     let bounces = 0;
     let currentSpinAngle = spinAngle;
 
-    // Use fairway bounce as default for preview (we don't know terrain during preview)
+    // Use fairway as default terrain for preview
     const defaultBounceFactor = TILE_PROPERTIES[TileType.FAIRWAY].bounceFactor;
-
-    for (let i = 0; i < TRAJECTORY_STEPS && !landed; i++) {
-      x += vx * TRAJECTORY_DT;
-      y += vy * TRAJECTORY_DT;
-      vz -= GRAVITY * TRAJECTORY_DT;
-      z += vz * TRAJECTORY_DT;
-
-      if (z <= 0 && vz < 0) {
-        z = 0;
-        if (Math.abs(vz) > MIN_BOUNCE_VZ && bounces < 3) {
-          vz = -vz * defaultBounceFactor;
-          vx *= BOUNCE_HORIZONTAL_DAMPING;
-          vy *= BOUNCE_HORIZONTAL_DAMPING;
-          bounces++;
-
-          // Apply spin rotation (same as actual physics)
-          if (spinDirection !== 0 && currentSpinAngle > 0) {
-            const spinRad = Phaser.Math.DegToRad(currentSpinAngle * spinDirection);
-            const cos = Math.cos(spinRad);
-            const sin = Math.sin(spinRad);
-            const newVx = vx * cos - vy * sin;
-            const newVy = vx * sin + vy * cos;
-            vx = newVx;
-            vy = newVy;
-            currentSpinAngle *= SPIN_DECAY;
-          }
-        } else {
-          landed = true;
-        }
-      }
-
-      points.push({ x, y, z: Math.max(0, z) });
-    }
-
-    // After the flight loop ends (landed = true or steps exhausted)
-    // Apply landing speed factor and simulate ground rolling
     const defaultLandingFactor = TILE_PROPERTIES[TileType.FAIRWAY].landingSpeedFactor;
     const defaultFriction = TILE_PROPERTIES[TileType.FAIRWAY].friction;
 
-    vx *= defaultLandingFactor;
-    vy *= defaultLandingFactor;
+    // If loft is too low for flight (same check as shoot()), skip flight and go straight to rolling
+    const skipFlight = vz <= MIN_BOUNCE_VZ;
+
+    if (!skipFlight) {
+      for (let i = 0; i < TRAJECTORY_STEPS && !landed; i++) {
+        x += vx * TRAJECTORY_DT;
+        y += vy * TRAJECTORY_DT;
+        vz -= GRAVITY * TRAJECTORY_DT;
+        z += vz * TRAJECTORY_DT;
+
+        if (z <= 0 && vz < 0) {
+          z = 0;
+          if (Math.abs(vz) > MIN_BOUNCE_VZ && bounces < 3) {
+            vz = -vz * defaultBounceFactor;
+            vx *= BOUNCE_HORIZONTAL_DAMPING;
+            vy *= BOUNCE_HORIZONTAL_DAMPING;
+            bounces++;
+
+            // Apply spin rotation (same as actual physics)
+            if (spinDirection !== 0 && currentSpinAngle > 0) {
+              const spinRad = Phaser.Math.DegToRad(currentSpinAngle * spinDirection);
+              const cos = Math.cos(spinRad);
+              const sin = Math.sin(spinRad);
+              const newVx = vx * cos - vy * sin;
+              const newVy = vx * sin + vy * cos;
+              vx = newVx;
+              vy = newVy;
+              currentSpinAngle *= SPIN_DECAY;
+            }
+          } else {
+            landed = true;
+          }
+        }
+
+        points.push({ x, y, z: Math.max(0, z) });
+      }
+
+      // After flight: apply landing speed reduction
+      vx *= defaultLandingFactor;
+      vy *= defaultLandingFactor;
+    }
+    // If skipFlight: vx/vy keep full power (same as real shoot() for low loft)
 
     // Simulate ground rolling
     const ROLL_DT = TRAJECTORY_DT;
