@@ -275,11 +275,6 @@ export class BallPhysics {
     let bounces = 0;
     let currentSpinAngle = spinAngle;
 
-    // Use fairway as default terrain for preview
-    const defaultBounceFactor = TILE_PROPERTIES[TileType.FAIRWAY].bounceFactor;
-    const defaultLandingFactor = TILE_PROPERTIES[TileType.FAIRWAY].landingSpeedFactor;
-    const defaultFriction = TILE_PROPERTIES[TileType.FAIRWAY].friction;
-
     // If loft is too low for flight (same check as shoot()), skip flight and go straight to rolling
     const skipFlight = vz <= MIN_BOUNCE_VZ;
 
@@ -292,8 +287,11 @@ export class BallPhysics {
 
         if (z <= 0 && vz < 0) {
           z = 0;
-          if (Math.abs(vz) > MIN_BOUNCE_VZ && bounces < 3) {
-            vz = -vz * defaultBounceFactor;
+          // Get actual terrain at bounce position
+          const terrainProps = TILE_PROPERTIES[this.getTerrainAtWorld(x, y)];
+
+          if (Math.abs(vz) > MIN_BOUNCE_VZ && terrainProps.bounceFactor > 0 && bounces < 3) {
+            vz = -vz * terrainProps.bounceFactor;
             vx *= BOUNCE_HORIZONTAL_DAMPING;
             vy *= BOUNCE_HORIZONTAL_DAMPING;
             bounces++;
@@ -317,21 +315,23 @@ export class BallPhysics {
         points.push({ x, y, z: Math.max(0, z) });
       }
 
-      // After flight: apply landing speed reduction
-      vx *= defaultLandingFactor;
-      vy *= defaultLandingFactor;
+      // After flight: apply landing speed reduction based on actual terrain
+      const landingProps = TILE_PROPERTIES[this.getTerrainAtWorld(x, y)];
+      vx *= landingProps.landingSpeedFactor;
+      vy *= landingProps.landingSpeedFactor;
     }
     // If skipFlight: vx/vy keep full power (same as real shoot() for low loft)
 
-    // Simulate ground rolling
+    // Simulate ground rolling with actual terrain friction
     const ROLL_DT = TRAJECTORY_DT;
-    const maxRollSteps = 200; // prevent infinite loop
+    const maxRollSteps = 200;
     for (let i = 0; i < maxRollSteps; i++) {
       const speed = Math.sqrt(vx * vx + vy * vy);
       if (speed < STOP_THRESHOLD) break;
 
-      vx *= defaultFriction;
-      vy *= defaultFriction;
+      const rollProps = TILE_PROPERTIES[this.getTerrainAtWorld(x, y)];
+      vx *= rollProps.friction;
+      vy *= rollProps.friction;
       x += vx * ROLL_DT;
       y += vy * ROLL_DT;
 
