@@ -8,7 +8,6 @@ import {
 } from '../utils/Constants';
 
 const STOP_THRESHOLD = 3;
-const WATER_SPEED_THRESHOLD = 30;
 
 export interface TrajectoryPoint {
   x: number;
@@ -140,11 +139,22 @@ export class BallPhysics {
         this.groundVx *= LANDING_SPEED_FACTOR;
         this.groundVy *= LANDING_SPEED_FACTOR;
         this.ball.setPosition(this.groundX, this.groundY);
+
+        // Check if landed on hazard (water or out-of-bounds)
+        if (this.isHazard(this.groundX, this.groundY)) {
+          this.handleWaterHazard();
+        }
       }
     }
   }
 
   private updateGround(dt: number): void {
+    // Immediate hazard check (water or out-of-bounds)
+    if (this.isHazard(this.groundX, this.groundY)) {
+      this.handleWaterHazard();
+      return;
+    }
+
     const speed = Math.sqrt(this.groundVx * this.groundVx + this.groundVy * this.groundVy);
 
     if (speed < STOP_THRESHOLD) {
@@ -158,12 +168,6 @@ export class BallPhysics {
     const tileType = this.getTerrainAtWorld(this.groundX, this.groundY);
     const props = TILE_PROPERTIES[tileType];
 
-    // Water hazard check
-    if (tileType === TileType.WATER && speed < WATER_SPEED_THRESHOLD) {
-      this.handleWaterHazard();
-      return;
-    }
-
     // Apply terrain friction as damping multiplier (same as simulation)
     this.groundVx *= props.friction;
     this.groundVy *= props.friction;
@@ -172,11 +176,13 @@ export class BallPhysics {
     this.groundX += this.groundVx * dt;
     this.groundY += this.groundVy * dt;
 
-    // Update safe position for non-water tiles
-    if (tileType !== TileType.WATER) {
-      this.lastSafePosition = { x: this.groundX, y: this.groundY };
+    // Check hazard after movement
+    if (this.isHazard(this.groundX, this.groundY)) {
+      this.handleWaterHazard();
+      return;
     }
 
+    this.lastSafePosition = { x: this.groundX, y: this.groundY };
     this.ball.setPosition(this.groundX, this.groundY);
   }
 
@@ -205,6 +211,12 @@ export class BallPhysics {
     this.groundY = this.lastSafePosition.y;
     this.ball.setPosition(this.lastSafePosition.x, this.lastSafePosition.y);
     EventBus.emit('water-hazard', this.strokeCount);
+  }
+
+  private isHazard(wx: number, wy: number): boolean {
+    const { tileX, tileY } = this.isoMap.worldToTile(wx, wy);
+    if (!this.isoMap.isInBounds(tileX, tileY)) return true;
+    return this.isoMap.getTileAt(tileX, tileY) === TileType.WATER;
   }
 
   private getTerrainAtWorld(wx: number, wy: number): TileType {
