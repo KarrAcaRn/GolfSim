@@ -20,7 +20,8 @@
       "Bash(/srv/projects/GolfSim/scripts/commit-and-push.sh \"Add auto-commit script and complete terrain effects + scoring\")",
       "Bash(/srv/projects/GolfSim/scripts/commit-and-push.sh:*)",
       "Bash(npx tsx:*)",
-      "Bash(bash:*)"
+      "Bash(bash:*)",
+      "Bash(npm run build:*)"
     ]
   }
 }

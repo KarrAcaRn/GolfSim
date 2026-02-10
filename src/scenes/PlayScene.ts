@@ -8,6 +8,7 @@ import { CourseData } from '../models/CourseData';
 import { EventBus } from '../utils/EventBus';
 import { HOLE_SINK_RADIUS } from '../utils/Constants';
 import { ScoreCard } from '../ui/ScoreCard';
+import { ShotPanel } from '../ui/ShotPanel';
 import { t } from '../i18n/i18n';
 
 export class PlayScene extends Phaser.Scene {
@@ -15,6 +16,7 @@ export class PlayScene extends Phaser.Scene {
   private cameraController!: CameraController;
   private ballPhysics!: BallPhysics;
   private aimingSystem!: AimingSystem;
+  private shotPanel!: ShotPanel;
   private courseData!: CourseData;
 
   private currentHoleIndex = 0;
@@ -60,8 +62,11 @@ export class PlayScene extends Phaser.Scene {
     // Center camera on ball
     this.cameras.main.centerOn(teePos.x, teePos.y);
 
+    // Shot panel (create before aiming system)
+    this.shotPanel = new ShotPanel(this);
+
     // Aiming system
-    this.aimingSystem = new AimingSystem(this, this.ballPhysics, this.isoMap);
+    this.aimingSystem = new AimingSystem(this, this.ballPhysics, this.isoMap, this.shotPanel);
 
     // HUD
     this.createHUD();
@@ -270,5 +275,6 @@ export class PlayScene extends Phaser.Scene {
     EventBus.removeAllListeners();
     this.ballPhysics.destroy();
     this.aimingSystem.destroy();
+    this.shotPanel.destroy();
   }
 }

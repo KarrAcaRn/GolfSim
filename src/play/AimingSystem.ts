@@ -7,6 +7,7 @@ import { TileType } from '../models/TileTypes';
 import { IsometricMap } from '../systems/IsometricMap';
 import { t } from '../i18n/i18n';
 import { PlayerHitParams, DEFAULT_HIT_PARAMS } from '../models/PlayerHitParams';
+import { ShotPanel } from '../ui/ShotPanel';
 
 export enum AimState {
   IDLE = 'idle',
@@ -18,6 +19,7 @@ export class AimingSystem {
   private scene: Phaser.Scene;
   private ballPhysics: BallPhysics;
   private isoMap: IsometricMap;
+  private shotPanel: ShotPanel;
   private state: AimState = AimState.IDLE;
   private dragStart: Phaser.Math.Vector2 | null = null;
   private aimGraphics: Phaser.GameObjects.Graphics;
@@ -26,10 +28,11 @@ export class AimingSystem {
   private clubIndex: number = DEFAULT_CLUB_INDEX;
   private hitParams: PlayerHitParams = DEFAULT_HIT_PARAMS;
 
-  constructor(scene: Phaser.Scene, ballPhysics: BallPhysics, isoMap: IsometricMap) {
+  constructor(scene: Phaser.Scene, ballPhysics: BallPhysics, isoMap: IsometricMap, shotPanel: ShotPanel) {
     this.scene = scene;
     this.ballPhysics = ballPhysics;
     this.isoMap = isoMap;
+    this.shotPanel = shotPanel;
 
     this.aimGraphics = scene.add.graphics();
     this.aimGraphics.setDepth(900);
@@ -55,6 +58,11 @@ export class AimingSystem {
     scene.input.keyboard!.on('keydown-THREE', () => this.selectClub(2));
     scene.input.keyboard!.on('keydown-FOUR', () => this.selectClub(3));
     scene.input.keyboard!.on('keydown-FIVE', () => this.selectClub(4));
+
+    // Listen for club changes from ShotPanel
+    EventBus.on('club-changed', (index: number) => {
+      this.selectClubFromPanel(index);
+    });
   }
 
   get currentClub(): Club {
@@ -69,6 +77,23 @@ export class AimingSystem {
     // Check if trying to select driver and not on tee
     if (club.teeOnly && !this.isOnTee()) {
       EventBus.emit('club-restricted', t('clubs.teeOnly'));
+      return;
+    }
+
+    this.clubIndex = index;
+    this.shotPanel.setSelectedClubIndex(index);
+  }
+
+  private selectClubFromPanel(index: number): void {
+    if (index < 0 || index >= CLUBS.length) return;
+
+    const club = CLUBS[index];
+
+    // Check if trying to select driver and not on tee
+    if (club.teeOnly && !this.isOnTee()) {
+      EventBus.emit('club-restricted', t('clubs.teeOnly'));
+      // Revert panel selection
+      this.shotPanel.setSelectedClubIndex(this.clubIndex);
       return;
     }
 
@@ -135,7 +160,11 @@ export class AimingSystem {
       const maxDeviationRad = Phaser.Math.DegToRad(accuracy);
       const actualAngle = angle + (Math.random() * 2 - 1) * maxDeviationRad;
 
-      this.ballPhysics.shoot(actualAngle, actualPower, this.currentClub.loftDegrees);
+      // Get spin from panel and calculate effective spin angle
+      const spinDirection = this.shotPanel.getSelectedSpin();
+      const effectiveSpinAngle = Math.max(0, this.currentClub.spinAngle + (terrainMod?.spinAngle ?? 0));
+
+      this.ballPhysics.shoot(actualAngle, actualPower, this.currentClub.loftDegrees, spinDirection, effectiveSpinAngle);
       this.state = AimState.ROLLING;
     } else {
       this.state = AimState.IDLE;

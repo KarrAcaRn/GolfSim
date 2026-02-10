@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { IsometricMap } from './IsometricMap';
 import { TileType, TILE_PROPERTIES } from '../models/TileTypes';
 import { EventBus } from '../utils/EventBus';
+import { SPIN_DECAY } from '../models/Club';
 import {
   GRAVITY, MIN_BOUNCE_VZ,
   TRAJECTORY_STEPS, TRAJECTORY_DT,
@@ -33,6 +34,10 @@ export class BallPhysics {
   private isAirborne = false;
   private isRolling = false;
   private shadowGraphics!: Phaser.GameObjects.Graphics;
+
+  // Spin properties
+  private spinDirection: number = 0;  // -1 = left, 0 = none, +1 = right
+  private spinAngle: number = 0;      // effective spin angle in degrees
 
   constructor(scene: Phaser.Scene, isoMap: IsometricMap) {
     this.scene = scene;
@@ -69,9 +74,13 @@ export class BallPhysics {
     return this.ball;
   }
 
-  shoot(angle: number, power: number, loftDegrees: number): void {
+  shoot(angle: number, power: number, loftDegrees: number, spinDirection: number = 0, spinAngle: number = 0): void {
     if (!this.ball) return;
     this.lastSafePosition = { x: this.groundX, y: this.groundY };
+
+    // Store spin properties
+    this.spinDirection = spinDirection;
+    this.spinAngle = spinAngle;
 
     const loftRad = Phaser.Math.DegToRad(loftDegrees);
     const horizontalPower = power * Math.cos(loftRad);
@@ -136,6 +145,18 @@ export class BallPhysics {
         this.vz = -this.vz * props.bounceFactor;
         this.groundVx *= BOUNCE_HORIZONTAL_DAMPING;
         this.groundVy *= BOUNCE_HORIZONTAL_DAMPING;
+
+        // Apply spin rotation
+        if (this.spinDirection !== 0 && this.spinAngle > 0) {
+          const spinRad = Phaser.Math.DegToRad(this.spinAngle * this.spinDirection);
+          const cos = Math.cos(spinRad);
+          const sin = Math.sin(spinRad);
+          const newVx = this.groundVx * cos - this.groundVy * sin;
+          const newVy = this.groundVx * sin + this.groundVy * cos;
+          this.groundVx = newVx;
+          this.groundVy = newVy;
+          this.spinAngle *= SPIN_DECAY; // decay: retain 60% per bounce
+        }
       } else {
         // Done bouncing — transition to manual ground rolling
         this.vz = 0;
@@ -212,6 +233,8 @@ export class BallPhysics {
     this.vz = 0;
     this.isAirborne = false;
     this.isRolling = false;
+    this.spinDirection = 0;
+    this.spinAngle = 0;
     this.groundX = this.lastSafePosition.x;
     this.groundY = this.lastSafePosition.y;
     this.ball.setPosition(this.lastSafePosition.x, this.lastSafePosition.y);
@@ -316,6 +339,8 @@ export class BallPhysics {
     this.vz = 0;
     this.isAirborne = false;
     this.isRolling = false;
+    this.spinDirection = 0;
+    this.spinAngle = 0;
     this.lastSafePosition = { x: worldX, y: worldY };
   }
 

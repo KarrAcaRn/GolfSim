@@ -42,5 +42,7 @@
   "clubs.iron": "Eisen",
   "clubs.sandWedge": "Sandwedge",
   "clubs.putter": "Putter",
-  "clubs.teeOnly": "Der Driver kann nur auf dem Tee verwendet werden!"
+  "clubs.teeOnly": "Der Driver kann nur auf dem Tee verwendet werden!",
+  "shotPanel.title": "Schlag",
+  "shotPanel.spin": "Spin"
 }

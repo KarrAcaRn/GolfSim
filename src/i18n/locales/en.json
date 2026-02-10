@@ -42,5 +42,7 @@
   "clubs.iron": "Iron",
   "clubs.sandWedge": "Sand Wedge",
   "clubs.putter": "Putter",
-  "clubs.teeOnly": "Driver can only be used on the tee!"
+  "clubs.teeOnly": "Driver can only be used on the tee!",
+  "shotPanel.title": "Shot",
+  "shotPanel.spin": "Spin"
 }
