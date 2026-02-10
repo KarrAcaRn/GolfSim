@@ -6,6 +6,7 @@ import { Club, CLUBS, DEFAULT_CLUB_INDEX } from '../models/Club';
 import { TileType } from '../models/TileTypes';
 import { IsometricMap } from '../systems/IsometricMap';
 import { t } from '../i18n/i18n';
+import { PlayerHitParams, DEFAULT_HIT_PARAMS } from '../models/PlayerHitParams';
 
 export enum AimState {
   IDLE = 'idle',
@@ -23,6 +24,7 @@ export class AimingSystem {
   private trajectoryGraphics: Phaser.GameObjects.Graphics;
   private powerText: Phaser.GameObjects.Text;
   private clubIndex: number = DEFAULT_CLUB_INDEX;
+  private hitParams: PlayerHitParams = DEFAULT_HIT_PARAMS;
 
   constructor(scene: Phaser.Scene, ballPhysics: BallPhysics, isoMap: IsometricMap) {
     this.scene = scene;
@@ -112,7 +114,16 @@ export class AimingSystem {
 
     if (distance > 5) {
       const angle = Math.atan2(dy, dx);
-      this.ballPhysics.shoot(angle, power, this.currentClub.loftDegrees);
+
+      // Apply player hit variance
+      const speedFactor = 1 + this.hitParams.hitSpeedDifferenceMin +
+        Math.random() * (this.hitParams.hitSpeedDifferenceMax - this.hitParams.hitSpeedDifferenceMin);
+      const actualPower = power * speedFactor;
+
+      const maxDeviationRad = Phaser.Math.DegToRad(this.hitParams.hitAccuracy);
+      const actualAngle = angle + (Math.random() * 2 - 1) * maxDeviationRad;
+
+      this.ballPhysics.shoot(actualAngle, actualPower, this.currentClub.loftDegrees);
       this.state = AimState.ROLLING;
     } else {
       this.state = AimState.IDLE;
