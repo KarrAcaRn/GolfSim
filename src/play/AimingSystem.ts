@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { BallPhysics } from '../systems/BallPhysics';
-import { MIN_POWER_THRESHOLD, MAX_DRAG_DISTANCE } from '../utils/Constants';
+import { MAX_DRAG_DISTANCE } from '../utils/Constants';
 import { EventBus } from '../utils/EventBus';
 import { Club, CLUBS, DEFAULT_CLUB_INDEX } from '../models/Club';
 import { TileType } from '../models/TileTypes';
@@ -107,9 +107,10 @@ export class AimingSystem {
       Phaser.Math.Distance.Between(this.dragStart.x, this.dragStart.y, pointer.worldX, pointer.worldY),
       MAX_DRAG_DISTANCE
     );
-    const power = (distance / MAX_DRAG_DISTANCE) * this.currentClub.maxPower;
+    const dragPercent = Math.min(distance / MAX_DRAG_DISTANCE, 1);
+    const power = this.currentClub.minPower + (this.currentClub.maxPower - this.currentClub.minPower) * dragPercent;
 
-    if (power > MIN_POWER_THRESHOLD) {
+    if (distance > 5) {
       const angle = Math.atan2(dy, dx);
       this.ballPhysics.shoot(angle, power, this.currentClub.loftDegrees);
       this.state = AimState.ROLLING;
@@ -160,7 +161,8 @@ export class AimingSystem {
       Phaser.Math.Distance.Between(this.dragStart.x, this.dragStart.y, pointerX, pointerY),
       MAX_DRAG_DISTANCE
     );
-    const power = (distance / MAX_DRAG_DISTANCE) * this.currentClub.maxPower;
+    const dragPercent = Math.min(distance / MAX_DRAG_DISTANCE, 1);
+    const power = this.currentClub.minPower + (this.currentClub.maxPower - this.currentClub.minPower) * dragPercent;
     const normalizedPower = distance / MAX_DRAG_DISTANCE;
 
     // Color: green (weak) -> yellow -> red (strong)
@@ -188,7 +190,7 @@ export class AimingSystem {
     this.aimGraphics.strokeCircle(ball.x, ball.y, 8 + normalizedPower * 12);
 
     // Draw trajectory preview
-    if (power > MIN_POWER_THRESHOLD) {
+    if (distance > 5) {
       this.drawTrajectoryPreview(ball.x, ball.y, angle, power, color);
     }
 

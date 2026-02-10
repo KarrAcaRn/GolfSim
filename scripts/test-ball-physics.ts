@@ -10,11 +10,11 @@ const BOUNCE_HORIZONTAL_DAMPING = 0.6;
 
 // Club data (copied from src/models/Club.ts)
 const CLUBS = [
-  { name: 'Driver',     maxPower: 600, loft: 12 },
-  { name: 'Wood',       maxPower: 500, loft: 20 },
-  { name: 'Iron',       maxPower: 400, loft: 35 },
-  { name: 'Sand Wedge', maxPower: 300, loft: 55 },
-  { name: 'Putter',     maxPower: 200, loft: 0  },
+  { name: 'Driver',     minPower: 200, maxPower: 600, loft: 12 },
+  { name: 'Wood',       minPower: 150, maxPower: 500, loft: 20 },
+  { name: 'Iron',       minPower: 80,  maxPower: 400, loft: 35 },
+  { name: 'Sand Wedge', minPower: 40,  maxPower: 300, loft: 55 },
+  { name: 'Putter',     minPower: 10,  maxPower: 200, loft: 0  },
 ];
 
 // Terrain properties (copied from src/models/TileTypes.ts)
@@ -127,16 +127,21 @@ console.log('=== BALL PHYSICS SIMULATION ===\n');
 
 const tests: Array<{ label: string; power: number; loft: number }> = [];
 
-// Test each club at 50% and 100% power
+// Test each club at minPower (0% drag), 50% drag, and maxPower (100% drag)
 for (const club of CLUBS) {
   tests.push({
-    label: `${club.name} - 50% Power`,
-    power: club.maxPower * 0.5,
+    label: `${club.name} - 0% Drag (minPower)`,
+    power: club.minPower,
     loft: club.loft
   });
   tests.push({
-    label: `${club.name} - 100% Power`,
-    power: club.maxPower * 1.0,
+    label: `${club.name} - 50% Drag`,
+    power: club.minPower + (club.maxPower - club.minPower) * 0.5,
+    loft: club.loft
+  });
+  tests.push({
+    label: `${club.name} - 100% Drag (maxPower)`,
+    power: club.maxPower,
     loft: club.loft
   });
 }
