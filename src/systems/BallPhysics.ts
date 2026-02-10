@@ -3,11 +3,12 @@ import { IsometricMap } from './IsometricMap';
 import { TileType, TILE_PROPERTIES } from '../models/TileTypes';
 import { EventBus } from '../utils/EventBus';
 import {
-  GRAVITY, BOUNCE_FACTOR, BOUNCE_FRICTION, MIN_BOUNCE_VZ,
-  LANDING_SPEED_FACTOR, TRAJECTORY_STEPS, TRAJECTORY_DT,
+  GRAVITY, MIN_BOUNCE_VZ,
+  TRAJECTORY_STEPS, TRAJECTORY_DT,
 } from '../utils/Constants';
 
 const STOP_THRESHOLD = 3;
+const BOUNCE_HORIZONTAL_DAMPING = 0.6;
 
 export interface TrajectoryPoint {
   x: number;
@@ -126,18 +127,22 @@ export class BallPhysics {
     if (this.z <= 0 && this.vz < 0) {
       this.z = 0;
 
-      if (Math.abs(this.vz) > MIN_BOUNCE_VZ) {
+      // Get terrain properties at landing position
+      const tileType = this.getTerrainAtWorld(this.groundX, this.groundY);
+      const props = TILE_PROPERTIES[tileType];
+
+      if (Math.abs(this.vz) > MIN_BOUNCE_VZ && props.bounceFactor > 0) {
         // Bounce: invert and dampen vertical velocity, reduce horizontal
-        this.vz = -this.vz * BOUNCE_FACTOR;
-        this.groundVx *= BOUNCE_FRICTION;
-        this.groundVy *= BOUNCE_FRICTION;
+        this.vz = -this.vz * props.bounceFactor;
+        this.groundVx *= BOUNCE_HORIZONTAL_DAMPING;
+        this.groundVy *= BOUNCE_HORIZONTAL_DAMPING;
       } else {
         // Done bouncing — transition to manual ground rolling
         this.vz = 0;
         this.isAirborne = false;
         this.isRolling = true;
-        this.groundVx *= LANDING_SPEED_FACTOR;
-        this.groundVy *= LANDING_SPEED_FACTOR;
+        this.groundVx *= props.landingSpeedFactor;
+        this.groundVy *= props.landingSpeedFactor;
         this.ball.setPosition(this.groundX, this.groundY);
 
         // Check if landed on hazard (water or out-of-bounds)
@@ -244,6 +249,9 @@ export class BallPhysics {
     let landed = false;
     let bounces = 0;
 
+    // Use fairway bounce as default for preview (we don't know terrain during preview)
+    const defaultBounceFactor = TILE_PROPERTIES[TileType.FAIRWAY].bounceFactor;
+
     for (let i = 0; i < TRAJECTORY_STEPS && !landed; i++) {
       x += vx * TRAJECTORY_DT;
       y += vy * TRAJECTORY_DT;
@@ -253,9 +261,9 @@ export class BallPhysics {
       if (z <= 0 && vz < 0) {
         z = 0;
         if (Math.abs(vz) > MIN_BOUNCE_VZ && bounces < 3) {
-          vz = -vz * BOUNCE_FACTOR;
-          vx *= BOUNCE_FRICTION;
-          vy *= BOUNCE_FRICTION;
+          vz = -vz * defaultBounceFactor;
+          vx *= BOUNCE_HORIZONTAL_DAMPING;
+          vy *= BOUNCE_HORIZONTAL_DAMPING;
           bounces++;
         } else {
           landed = true;
