@@ -40,6 +40,7 @@ export class PlayScene extends Phaser.Scene {
     // Render the course (read-only)
     this.isoMap = new IsometricMap(this, this.courseData.width, this.courseData.height);
     this.isoMap.loadFromData(this.courseData);
+    this.isoMap.setGridVisible(false);
 
     // Camera
     const bounds = this.isoMap.getWorldBounds();

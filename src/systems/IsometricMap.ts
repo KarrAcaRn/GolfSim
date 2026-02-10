@@ -4,6 +4,13 @@ import { TileType, TILE_PROPERTIES } from '../models/TileTypes';
 import { CourseData } from '../models/CourseData';
 import { tileToWorld } from '../utils/IsoUtils';
 
+function darkenColor(color: number, factor: number): number {
+  const r = Math.floor(((color >> 16) & 0xFF) * factor);
+  const g = Math.floor(((color >> 8) & 0xFF) * factor);
+  const b = Math.floor((color & 0xFF) * factor);
+  return (r << 16) | (g << 8) | b;
+}
+
 export class IsometricMap {
   private scene: Phaser.Scene;
   private width: number;
@@ -11,6 +18,8 @@ export class IsometricMap {
   private tiles: TileType[][];
   private tileSprites: (Phaser.GameObjects.Image | null)[][];
   private container: Phaser.GameObjects.Container;
+  private gridVisible: boolean = true;
+  private blendGraphics: Phaser.GameObjects.Graphics;
 
   constructor(scene: Phaser.Scene, width: number, height: number) {
     this.scene = scene;
@@ -26,41 +35,75 @@ export class IsometricMap {
       this.tileSprites[y] = new Array(width).fill(null);
     }
 
+    // Blend overlay graphics
+    this.blendGraphics = scene.add.graphics();
+    this.blendGraphics.setDepth(1); // just above tiles
+    this.container.add(this.blendGraphics);
+
     this.renderAllTiles();
   }
 
   static generateTileTextures(scene: Phaser.Scene): void {
     const halfW = TILE_WIDTH / 2;
     const halfH = TILE_HEIGHT / 2;
+    const r = 3; // corner rounding radius in pixels
 
     for (const [, props] of Object.entries(TILE_PROPERTIES)) {
-      const key = `tile_${props.type}`;
-      if (scene.textures.exists(key)) continue;
+      for (const suffix of ['', '_clean']) {
+        const key = `tile_${props.type}${suffix}`;
+        if (scene.textures.exists(key)) continue;
 
-      const graphics = scene.add.graphics();
+        const graphics = scene.add.graphics();
 
-      // Draw filled diamond
-      graphics.fillStyle(props.color, 1);
-      graphics.beginPath();
-      graphics.moveTo(halfW, 0);
-      graphics.lineTo(TILE_WIDTH, halfH);
-      graphics.lineTo(halfW, TILE_HEIGHT);
-      graphics.lineTo(0, halfH);
-      graphics.closePath();
-      graphics.fillPath();
+        // Draw rounded diamond with slight edge darkening
+        // Main fill - slightly rounded diamond
+        graphics.fillStyle(props.color, 1);
+        graphics.beginPath();
+        // Top point (rounded)
+        graphics.moveTo(halfW - r, r);
+        graphics.lineTo(halfW + r, r);
+        // Right point (rounded)
+        graphics.lineTo(TILE_WIDTH - r, halfH - r);
+        graphics.lineTo(TILE_WIDTH - r, halfH + r);
+        // Bottom point (rounded)
+        graphics.lineTo(halfW + r, TILE_HEIGHT - r);
+        graphics.lineTo(halfW - r, TILE_HEIGHT - r);
+        // Left point (rounded)
+        graphics.lineTo(r, halfH + r);
+        graphics.lineTo(r, halfH - r);
+        graphics.closePath();
+        graphics.fillPath();
 
-      // Draw outline
-      graphics.lineStyle(1, 0x000000, 0.3);
-      graphics.beginPath();
-      graphics.moveTo(halfW, 0);
-      graphics.lineTo(TILE_WIDTH, halfH);
-      graphics.lineTo(halfW, TILE_HEIGHT);
-      graphics.lineTo(0, halfH);
-      graphics.closePath();
-      graphics.strokePath();
+        // Edge vignette: slightly darker border (2px inset)
+        const darkerColor = darkenColor(props.color, 0.85);
+        graphics.lineStyle(2, darkerColor, 0.4);
+        graphics.beginPath();
+        graphics.moveTo(halfW - r, r);
+        graphics.lineTo(halfW + r, r);
+        graphics.lineTo(TILE_WIDTH - r, halfH - r);
+        graphics.lineTo(TILE_WIDTH - r, halfH + r);
+        graphics.lineTo(halfW + r, TILE_HEIGHT - r);
+        graphics.lineTo(halfW - r, TILE_HEIGHT - r);
+        graphics.lineTo(r, halfH + r);
+        graphics.lineTo(r, halfH - r);
+        graphics.closePath();
+        graphics.strokePath();
 
-      graphics.generateTexture(key, TILE_WIDTH, TILE_HEIGHT);
-      graphics.destroy();
+        // Grid outline only for non-clean variant
+        if (suffix === '') {
+          graphics.lineStyle(1, 0x000000, 0.3);
+          graphics.beginPath();
+          graphics.moveTo(halfW, 0);
+          graphics.lineTo(TILE_WIDTH, halfH);
+          graphics.lineTo(halfW, TILE_HEIGHT);
+          graphics.lineTo(0, halfH);
+          graphics.closePath();
+          graphics.strokePath();
+        }
+
+        graphics.generateTexture(key, TILE_WIDTH, TILE_HEIGHT);
+        graphics.destroy();
+      }
     }
   }
 
@@ -72,7 +115,8 @@ export class IsometricMap {
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
         const worldPos = tileToWorld(x, y);
-        const key = `tile_${this.tiles[y][x]}`;
+        const suffix = this.gridVisible ? '' : '_clean';
+        const key = `tile_${this.tiles[y][x]}${suffix}`;
         const sprite = this.scene.add.image(
           worldPos.x + offsetX,
           worldPos.y + offsetY,
@@ -83,6 +127,8 @@ export class IsometricMap {
         this.tileSprites[y][x] = sprite;
       }
     }
+
+    this.updateBlendOverlays();
   }
 
   setTileAt(tileX: number, tileY: number, type: TileType): void {
@@ -94,8 +140,11 @@ export class IsometricMap {
     // Update sprite texture
     const sprite = this.tileSprites[tileY][tileX];
     if (sprite) {
-      sprite.setTexture(`tile_${type}`);
+      const suffix = this.gridVisible ? '' : '_clean';
+      sprite.setTexture(`tile_${type}${suffix}`);
     }
+
+    this.updateBlendOverlays();
   }
 
   getTileAt(tileX: number, tileY: number): TileType {
@@ -147,12 +196,69 @@ export class IsometricMap {
     };
   }
 
+  setGridVisible(visible: boolean): void {
+    if (this.gridVisible === visible) return;
+    this.gridVisible = visible;
+    // Update all tile sprites to use correct texture variant
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        const sprite = this.tileSprites[y][x];
+        if (sprite) {
+          const suffix = visible ? '' : '_clean';
+          sprite.setTexture(`tile_${this.tiles[y][x]}${suffix}`);
+        }
+      }
+    }
+    // Rebuild blend overlays
+    this.updateBlendOverlays();
+  }
+
+  updateBlendOverlays(): void {
+    this.blendGraphics.clear();
+    const offsetX = this.getOffsetX();
+    const offsetY = this.getOffsetY();
+
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        const tileType = this.tiles[y][x];
+        const tileColor = TILE_PROPERTIES[tileType].color;
+        const worldPos = tileToWorld(x, y);
+        const cx = worldPos.x + offsetX;
+        const cy = worldPos.y + offsetY;
+
+        // Check 4 neighbors: N(x,y-1), E(x+1,y), S(x,y+1), W(x-1,y)
+        const neighbors = [
+          { dx: 0, dy: -1, ox: 0, oy: -TILE_HEIGHT / 4 },   // North
+          { dx: 1, dy: 0,  ox: TILE_WIDTH / 4, oy: 0 },      // East
+          { dx: 0, dy: 1,  ox: 0, oy: TILE_HEIGHT / 4 },     // South
+          { dx: -1, dy: 0, ox: -TILE_WIDTH / 4, oy: 0 },     // West
+        ];
+
+        for (const n of neighbors) {
+          const nx = x + n.dx;
+          const ny = y + n.dy;
+          if (!this.isInBounds(nx, ny)) continue;
+
+          const neighborType = this.tiles[ny][nx];
+          if (neighborType === tileType) continue;
+
+          const neighborColor = TILE_PROPERTIES[neighborType].color;
+          // Draw a small blended ellipse at the edge toward the neighbor
+          this.blendGraphics.fillStyle(neighborColor, 0.2);
+          this.blendGraphics.fillEllipse(cx + n.ox, cy + n.oy, 14, 8);
+        }
+      }
+    }
+  }
+
   loadFromData(data: CourseData): void {
     for (let y = 0; y < Math.min(data.height, this.height); y++) {
       for (let x = 0; x < Math.min(data.width, this.width); x++) {
         this.setTileAt(x, y, data.tiles[y][x]);
       }
     }
+
+    this.updateBlendOverlays();
   }
 
   exportData(): { width: number; height: number; tiles: TileType[][] } {
