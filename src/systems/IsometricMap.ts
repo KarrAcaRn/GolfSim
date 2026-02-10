@@ -4,13 +4,6 @@ import { TileType, TILE_PROPERTIES } from '../models/TileTypes';
 import { CourseData } from '../models/CourseData';
 import { tileToWorld } from '../utils/IsoUtils';
 
-function darkenColor(color: number, factor: number): number {
-  const r = Math.floor(((color >> 16) & 0xFF) * factor);
-  const g = Math.floor(((color >> 8) & 0xFF) * factor);
-  const b = Math.floor((color & 0xFF) * factor);
-  return (r << 16) | (g << 8) | b;
-}
-
 export class IsometricMap {
   private scene: Phaser.Scene;
   private width: number;
@@ -46,7 +39,6 @@ export class IsometricMap {
   static generateTileTextures(scene: Phaser.Scene): void {
     const halfW = TILE_WIDTH / 2;
     const halfH = TILE_HEIGHT / 2;
-    const r = 3; // corner rounding radius in pixels
 
     for (const [, props] of Object.entries(TILE_PROPERTIES)) {
       for (const suffix of ['', '_clean']) {
@@ -55,39 +47,15 @@ export class IsometricMap {
 
         const graphics = scene.add.graphics();
 
-        // Draw rounded diamond with slight edge darkening
-        // Main fill - slightly rounded diamond
+        // Draw filled diamond
         graphics.fillStyle(props.color, 1);
         graphics.beginPath();
-        // Top point (rounded)
-        graphics.moveTo(halfW - r, r);
-        graphics.lineTo(halfW + r, r);
-        // Right point (rounded)
-        graphics.lineTo(TILE_WIDTH - r, halfH - r);
-        graphics.lineTo(TILE_WIDTH - r, halfH + r);
-        // Bottom point (rounded)
-        graphics.lineTo(halfW + r, TILE_HEIGHT - r);
-        graphics.lineTo(halfW - r, TILE_HEIGHT - r);
-        // Left point (rounded)
-        graphics.lineTo(r, halfH + r);
-        graphics.lineTo(r, halfH - r);
+        graphics.moveTo(halfW, 0);
+        graphics.lineTo(TILE_WIDTH, halfH);
+        graphics.lineTo(halfW, TILE_HEIGHT);
+        graphics.lineTo(0, halfH);
         graphics.closePath();
         graphics.fillPath();
-
-        // Edge vignette: slightly darker border (2px inset)
-        const darkerColor = darkenColor(props.color, 0.85);
-        graphics.lineStyle(2, darkerColor, 0.4);
-        graphics.beginPath();
-        graphics.moveTo(halfW - r, r);
-        graphics.lineTo(halfW + r, r);
-        graphics.lineTo(TILE_WIDTH - r, halfH - r);
-        graphics.lineTo(TILE_WIDTH - r, halfH + r);
-        graphics.lineTo(halfW + r, TILE_HEIGHT - r);
-        graphics.lineTo(halfW - r, TILE_HEIGHT - r);
-        graphics.lineTo(r, halfH + r);
-        graphics.lineTo(r, halfH - r);
-        graphics.closePath();
-        graphics.strokePath();
 
         // Grid outline only for non-clean variant
         if (suffix === '') {
