@@ -245,8 +245,9 @@ export class AimingSystem {
     const g = Math.floor((1 - normalizedPower) * 255);
     const color = (r << 16) | (g << 8) | 0;
 
-    // Direction arrow from ball toward mouse
-    const lineLength = 30 + normalizedPower * 60;
+    // Direction arrow - length capped to landing distance
+    const distToMouse = Math.sqrt((mouseX - ballX) ** 2 + (mouseY - ballY) ** 2);
+    const lineLength = Math.min(30 + normalizedPower * 60, distToMouse * 0.8);
     const endX = ballX + Math.cos(angle) * lineLength;
     const endY = ballY + Math.sin(angle) * lineLength;
 
