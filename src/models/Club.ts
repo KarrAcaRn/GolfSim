@@ -25,11 +25,11 @@ export const CLUBS: Club[] = [
     minPower: 200,
     maxPower: 600,
     loftDegrees: 12,
-    spinAngle: 3,
+    spinAngle: 10,
     teeOnly: true,
     terrainModifiers: {
-      [TileType.SAND]:  { hitSpeedDifferenceMin: -0.30, hitSpeedDifferenceMax: -0.10, hitAccuracy: 5.0, spinAngle: -2 },
-      [TileType.ROUGH]: { hitSpeedDifferenceMin: -0.15, hitSpeedDifferenceMax: -0.05, hitAccuracy: 2.0, spinAngle: -1 },
+      [TileType.SAND]:  { hitSpeedDifferenceMin: -0.30, hitSpeedDifferenceMax: -0.10, hitAccuracy: 5.0, spinAngle: -6 },
+      [TileType.ROUGH]: { hitSpeedDifferenceMin: -0.15, hitSpeedDifferenceMax: -0.05, hitAccuracy: 2.0, spinAngle: -3 },
     }
   },
   {
@@ -38,11 +38,11 @@ export const CLUBS: Club[] = [
     minPower: 150,
     maxPower: 500,
     loftDegrees: 20,
-    spinAngle: 5,
+    spinAngle: 15,
     teeOnly: false,
     terrainModifiers: {
-      [TileType.SAND]:  { hitSpeedDifferenceMin: -0.25, hitSpeedDifferenceMax: -0.08, hitAccuracy: 4.0, spinAngle: -3 },
-      [TileType.ROUGH]: { hitSpeedDifferenceMin: -0.10, hitSpeedDifferenceMax: -0.03, hitAccuracy: 1.5, spinAngle: -1 },
+      [TileType.SAND]:  { hitSpeedDifferenceMin: -0.25, hitSpeedDifferenceMax: -0.08, hitAccuracy: 4.0, spinAngle: -8 },
+      [TileType.ROUGH]: { hitSpeedDifferenceMin: -0.10, hitSpeedDifferenceMax: -0.03, hitAccuracy: 1.5, spinAngle: -4 },
     }
   },
   {
@@ -51,11 +51,11 @@ export const CLUBS: Club[] = [
     minPower: 80,
     maxPower: 400,
     loftDegrees: 35,
-    spinAngle: 8,
+    spinAngle: 20,
     teeOnly: false,
     terrainModifiers: {
-      [TileType.SAND]:  { hitSpeedDifferenceMin: -0.15, hitSpeedDifferenceMax: -0.05, hitAccuracy: 2.0, spinAngle: -2 },
-      [TileType.ROUGH]: { hitSpeedDifferenceMin: -0.05, hitSpeedDifferenceMax: -0.01, hitAccuracy: 0.5, spinAngle: 0 },
+      [TileType.SAND]:  { hitSpeedDifferenceMin: -0.15, hitSpeedDifferenceMax: -0.05, hitAccuracy: 2.0, spinAngle: -6 },
+      [TileType.ROUGH]: { hitSpeedDifferenceMin: -0.05, hitSpeedDifferenceMax: -0.01, hitAccuracy: 0.5, spinAngle: -2 },
     }
   },
   {
@@ -64,11 +64,11 @@ export const CLUBS: Club[] = [
     minPower: 40,
     maxPower: 300,
     loftDegrees: 55,
-    spinAngle: 10,
+    spinAngle: 25,
     teeOnly: false,
     terrainModifiers: {
-      [TileType.SAND]:  { hitSpeedDifferenceMin: -0.02, hitSpeedDifferenceMax: 0.00, hitAccuracy: 0.5, spinAngle: 2 },
-      [TileType.ROUGH]: { hitSpeedDifferenceMin: -0.05, hitSpeedDifferenceMax: -0.01, hitAccuracy: 0.5, spinAngle: 0 },
+      [TileType.SAND]:  { hitSpeedDifferenceMin: -0.02, hitSpeedDifferenceMax: 0.00, hitAccuracy: 0.5, spinAngle: 5 },
+      [TileType.ROUGH]: { hitSpeedDifferenceMin: -0.05, hitSpeedDifferenceMax: -0.01, hitAccuracy: 0.5, spinAngle: -2 },
     }
   },
   {
@@ -77,11 +77,11 @@ export const CLUBS: Club[] = [
     minPower: 10,
     maxPower: 200,
     loftDegrees: 0,
-    spinAngle: 2,
+    spinAngle: 8,
     teeOnly: false,
     terrainModifiers: {
-      [TileType.SAND]:  { hitSpeedDifferenceMin: -0.20, hitSpeedDifferenceMax: -0.10, hitAccuracy: 3.0, spinAngle: -1 },
-      [TileType.ROUGH]: { hitSpeedDifferenceMin: -0.10, hitSpeedDifferenceMax: -0.05, hitAccuracy: 1.5, spinAngle: -1 },
+      [TileType.SAND]:  { hitSpeedDifferenceMin: -0.20, hitSpeedDifferenceMax: -0.10, hitAccuracy: 3.0, spinAngle: -4 },
+      [TileType.ROUGH]: { hitSpeedDifferenceMin: -0.10, hitSpeedDifferenceMax: -0.05, hitAccuracy: 1.5, spinAngle: -3 },
     }
   },
 ];
