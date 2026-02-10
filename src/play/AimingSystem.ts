@@ -261,7 +261,17 @@ export class AimingSystem {
     power: number,
     color: number
   ): void {
-    const points = this.ballPhysics.simulateTrajectory(startX, startY, angle, power, this.currentClub.loftDegrees);
+    const spinDirection = this.shotPanel.getSelectedSpin();
+    const groundPos = this.ballPhysics.getGroundPosition();
+    const { tileX, tileY } = this.isoMap.worldToTile(groundPos.x, groundPos.y);
+    const tileType = this.isoMap.getTileAt(tileX, tileY);
+    const terrainMod = this.currentClub.terrainModifiers[tileType];
+    const effectiveSpinAngle = Math.max(0, this.currentClub.spinAngle + (terrainMod?.spinAngle ?? 0));
+
+    const points = this.ballPhysics.simulateTrajectory(
+      startX, startY, angle, power, this.currentClub.loftDegrees,
+      spinDirection, effectiveSpinAngle
+    );
     if (points.length === 0) return;
 
     // Draw dots along the trajectory ground path

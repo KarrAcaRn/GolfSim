@@ -257,7 +257,9 @@ export class BallPhysics {
     startY: number,
     dirAngle: number,
     power: number,
-    loftDegrees: number
+    loftDegrees: number,
+    spinDirection: number = 0,
+    spinAngle: number = 0
   ): TrajectoryPoint[] {
     const points: TrajectoryPoint[] = [];
     const loftRad = Phaser.Math.DegToRad(loftDegrees);
@@ -271,6 +273,7 @@ export class BallPhysics {
     let z = 0;
     let landed = false;
     let bounces = 0;
+    let currentSpinAngle = spinAngle;
 
     // Use fairway bounce as default for preview (we don't know terrain during preview)
     const defaultBounceFactor = TILE_PROPERTIES[TileType.FAIRWAY].bounceFactor;
@@ -288,6 +291,18 @@ export class BallPhysics {
           vx *= BOUNCE_HORIZONTAL_DAMPING;
           vy *= BOUNCE_HORIZONTAL_DAMPING;
           bounces++;
+
+          // Apply spin rotation (same as actual physics)
+          if (spinDirection !== 0 && currentSpinAngle > 0) {
+            const spinRad = Phaser.Math.DegToRad(currentSpinAngle * spinDirection);
+            const cos = Math.cos(spinRad);
+            const sin = Math.sin(spinRad);
+            const newVx = vx * cos - vy * sin;
+            const newVy = vx * sin + vy * cos;
+            vx = newVx;
+            vy = newVy;
+            currentSpinAngle *= SPIN_DECAY;
+          }
         } else {
           landed = true;
         }
