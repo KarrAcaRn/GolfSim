@@ -1,8 +1,6 @@
 import Phaser from 'phaser';
 import { IsometricMap } from '../systems/IsometricMap';
 import { EditorState, EditorTool } from './EditorState';
-import { TILE_WIDTH, TILE_HEIGHT } from '../utils/Constants';
-import { tileToWorld } from '../utils/IsoUtils';
 
 export class ElevationPlacer {
   private scene: Phaser.Scene;
@@ -83,38 +81,36 @@ export class ElevationPlacer {
     const { tileX, tileY } = this.isoMap.worldToTile(worldX, worldY);
     if (!this.isoMap.isInBounds(tileX, tileY)) return;
 
-    const worldPos = this.isoMap.tileToWorld(tileX, tileY);
-    const elev = this.isoMap.getElevationAt(tileX, tileY);
-    const cx = worldPos.x;
-    const cy = worldPos.y - elev * 4; // ELEVATION_STEP = 4
-    const halfW = TILE_WIDTH / 2;
-    const halfH = TILE_HEIGHT / 2;
+    const corners = this.isoMap.getTileCorners(tileX, tileY);
 
     // Diamond outline
     const isRaise = this.state.currentTool === EditorTool.RAISE_TERRAIN;
     const color = isRaise ? 0x00ff00 : 0xff6600;
     this.hoverGraphics.lineStyle(2, color, 0.8);
     this.hoverGraphics.beginPath();
-    this.hoverGraphics.moveTo(cx, cy - halfH);
-    this.hoverGraphics.lineTo(cx + halfW, cy);
-    this.hoverGraphics.lineTo(cx, cy + halfH);
-    this.hoverGraphics.lineTo(cx - halfW, cy);
+    this.hoverGraphics.moveTo(corners.n.x, corners.n.y);
+    this.hoverGraphics.lineTo(corners.e.x, corners.e.y);
+    this.hoverGraphics.lineTo(corners.s.x, corners.s.y);
+    this.hoverGraphics.lineTo(corners.w.x, corners.w.y);
     this.hoverGraphics.closePath();
     this.hoverGraphics.strokePath();
 
-    // Arrow indicator
+    // Arrow indicator at tile center
+    const centerX = (corners.n.x + corners.e.x + corners.s.x + corners.w.x) / 4;
+    const centerY = (corners.n.y + corners.e.y + corners.s.y + corners.w.y) / 4;
+
     if (isRaise) {
       // Up arrow
       this.hoverGraphics.lineStyle(2, color, 0.9);
-      this.hoverGraphics.lineBetween(cx, cy - 2, cx, cy - 10);
-      this.hoverGraphics.lineBetween(cx - 4, cy - 6, cx, cy - 10);
-      this.hoverGraphics.lineBetween(cx + 4, cy - 6, cx, cy - 10);
+      this.hoverGraphics.lineBetween(centerX, centerY - 2, centerX, centerY - 10);
+      this.hoverGraphics.lineBetween(centerX - 4, centerY - 6, centerX, centerY - 10);
+      this.hoverGraphics.lineBetween(centerX + 4, centerY - 6, centerX, centerY - 10);
     } else {
       // Down arrow
       this.hoverGraphics.lineStyle(2, color, 0.9);
-      this.hoverGraphics.lineBetween(cx, cy + 2, cx, cy + 10);
-      this.hoverGraphics.lineBetween(cx - 4, cy + 6, cx, cy + 10);
-      this.hoverGraphics.lineBetween(cx + 4, cy + 6, cx, cy + 10);
+      this.hoverGraphics.lineBetween(centerX, centerY + 2, centerX, centerY + 10);
+      this.hoverGraphics.lineBetween(centerX - 4, centerY + 6, centerX, centerY + 10);
+      this.hoverGraphics.lineBetween(centerX + 4, centerY + 6, centerX, centerY + 10);
     }
   }
 

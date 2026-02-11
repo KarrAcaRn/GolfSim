@@ -22,7 +22,8 @@
       "Bash(npx tsx:*)",
       "Bash(bash:*)",
       "Bash(npm run build:*)",
-      "Bash(npx vite:*)"
+      "Bash(npx vite:*)",
+      "Bash(scripts/commit-and-push.sh:*)"
     ]
   }
 }

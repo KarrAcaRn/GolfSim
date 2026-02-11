@@ -2,7 +2,6 @@ import Phaser from 'phaser';
 import { IsometricMap } from '../systems/IsometricMap';
 import { EditorState, EditorTool } from './EditorState';
 import { TileType, TILE_PROPERTIES } from '../models/TileTypes';
-import { TILE_WIDTH, TILE_HEIGHT } from '../utils/Constants';
 
 export class TilePlacer {
   private scene: Phaser.Scene;
@@ -71,9 +70,7 @@ export class TilePlacer {
     const { tileX, tileY } = this.isoMap.worldToTile(worldX, worldY);
     if (!this.isoMap.isInBounds(tileX, tileY)) return;
 
-    const worldPos = this.isoMap.tileToWorld(tileX, tileY);
-    const halfW = TILE_WIDTH / 2;
-    const halfH = TILE_HEIGHT / 2;
+    const corners = this.isoMap.getTileCorners(tileX, tileY);
 
     // Determine hover color based on tool
     let hoverColor = 0xffffff;
@@ -85,10 +82,10 @@ export class TilePlacer {
 
     this.hoverGraphics.lineStyle(2, hoverColor, 0.8);
     this.hoverGraphics.beginPath();
-    this.hoverGraphics.moveTo(worldPos.x, worldPos.y - halfH);
-    this.hoverGraphics.lineTo(worldPos.x + halfW, worldPos.y);
-    this.hoverGraphics.lineTo(worldPos.x, worldPos.y + halfH);
-    this.hoverGraphics.lineTo(worldPos.x - halfW, worldPos.y);
+    this.hoverGraphics.moveTo(corners.n.x, corners.n.y);
+    this.hoverGraphics.lineTo(corners.e.x, corners.e.y);
+    this.hoverGraphics.lineTo(corners.s.x, corners.s.y);
+    this.hoverGraphics.lineTo(corners.w.x, corners.w.y);
     this.hoverGraphics.closePath();
     this.hoverGraphics.strokePath();
   }
