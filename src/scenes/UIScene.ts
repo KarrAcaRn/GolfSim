@@ -66,7 +66,7 @@ export class UIScene extends Phaser.Scene {
       fontSize: '12px',
       bgColor: 0x2a2a44,
       hoverColor: 0x44446a,
-      onClick: () => EventBus.emit('toggle-build-menu'),
+      onClick: () => this.buildMenu?.toggle(),
     });
     buildBtn.setDepth(101);
     this.buttons.push(buildBtn);
@@ -157,7 +157,8 @@ export class UIScene extends Phaser.Scene {
     // Build menu (initially hidden, toggled with B)
     this.buildMenu = new BuildMenu(this);
 
-    EventBus.on('toggle-build-menu', () => {
+    // Direct keyboard listener in UIScene (not via EventBus)
+    this.input.keyboard?.on('keydown-B', () => {
       this.buildMenu?.toggle();
     });
   }

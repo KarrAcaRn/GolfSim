@@ -85,10 +85,6 @@ export class EditorScene extends Phaser.Scene {
       this.editorState.currentTool = EditorTool.PLACE_HOLE;
     });
 
-    keyboard.on('keydown-B', () => {
-      EventBus.emit('toggle-build-menu');
-    });
-
     keyboard.on('keydown-Z', (event: KeyboardEvent) => {
       if (event.ctrlKey || event.metaKey) {
         if (event.shiftKey) {
