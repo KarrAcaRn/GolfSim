@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import { Button } from '../ui/Button';
 import { BuildMenu } from '../ui/BuildMenu';
-import { TileType, TILE_PROPERTIES } from '../models/TileTypes';
 import { EditorTool } from '../editor/EditorState';
 import { t } from '../i18n/i18n';
 import { EventBus } from '../utils/EventBus';
@@ -17,7 +16,6 @@ const BUTTON_MARGIN = 4;
 export class UIScene extends Phaser.Scene {
   private mode: 'editor' | 'play' = 'editor';
   private buttons: Button[] = [];
-  private terrainButtons: Map<TileType, Button> = new Map();
   private toolButtons: Map<string, Button> = new Map();
   private infoText!: Phaser.GameObjects.Text;
   private buildMenu?: BuildMenu;
@@ -40,7 +38,6 @@ export class UIScene extends Phaser.Scene {
   private clearUI(): void {
     this.buttons.forEach(b => b.destroy());
     this.buttons = [];
-    this.terrainButtons.clear();
     this.toolButtons.clear();
     if (this.buildMenu) {
       this.buildMenu.destroy();
@@ -59,59 +56,23 @@ export class UIScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(100);
 
-    // Title
-    this.add.text(TOOLBAR_WIDTH / 2 + 4, y + 6, t('editor.terrain'), {
-      fontSize: '14px',
-      color: '#ffffff',
-      fontStyle: 'bold',
-    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(101);
+    // Build Menu button
+    const buildBtn = new Button(this, {
+      x,
+      y,
+      width: TOOLBAR_WIDTH,
+      height: BUTTON_HEIGHT + 4,
+      text: t('editor.buildMenu.title' as any),
+      fontSize: '12px',
+      bgColor: 0x2a2a44,
+      hoverColor: 0x44446a,
+      onClick: () => EventBus.emit('toggle-build-menu'),
+    });
+    buildBtn.setDepth(101);
+    this.buttons.push(buildBtn);
+    y += BUTTON_HEIGHT + BUTTON_MARGIN + 4;
 
-    y += 28;
-
-    // Terrain buttons
-    const terrainKeys: { type: TileType; key: string }[] = [
-      { type: TileType.GRASS, key: 'editor.toolbar.grass' },
-      { type: TileType.FAIRWAY, key: 'editor.toolbar.fairway' },
-      { type: TileType.GREEN, key: 'editor.toolbar.green' },
-      { type: TileType.SAND, key: 'editor.toolbar.sand' },
-      { type: TileType.WATER, key: 'editor.toolbar.water' },
-      { type: TileType.ROUGH, key: 'editor.toolbar.rough' },
-      { type: TileType.TEE, key: 'editor.toolbar.tee' },
-    ];
-
-    for (const { type, key } of terrainKeys) {
-      const props = TILE_PROPERTIES[type];
-
-      // Color swatch
-      this.add.rectangle(x + 4, y + BUTTON_HEIGHT / 2, 16, 16, props.color)
-        .setOrigin(0, 0.5)
-        .setScrollFactor(0)
-        .setDepth(102);
-
-      const btn = new Button(this, {
-        x: x + 24,
-        y,
-        width: TOOLBAR_WIDTH - 28,
-        height: BUTTON_HEIGHT,
-        text: `${t(key as any)} (${type + 1})`,
-        fontSize: '11px',
-        bgColor: 0x333333,
-        hoverColor: 0x555555,
-        onClick: () => {
-          EventBus.emit('editor-select-terrain', type);
-          this.updateTerrainHighlight(type);
-        },
-      });
-      btn.setDepth(101);
-      this.buttons.push(btn);
-      this.terrainButtons.set(type, btn);
-      y += BUTTON_HEIGHT + BUTTON_MARGIN;
-    }
-
-    // Default selection
-    this.updateTerrainHighlight(TileType.FAIRWAY);
-
-    y += 10;
+    y += 6;
 
     // Separator
     this.add.rectangle(x, y, TOOLBAR_WIDTH, 1, 0x666666)
@@ -226,10 +187,6 @@ export class UIScene extends Phaser.Scene {
     });
     btn.setDepth(101);
     this.buttons.push(btn);
-  }
-
-  private updateTerrainHighlight(type: TileType): void {
-    this.terrainButtons.forEach((btn, t) => btn.setActive(t === type));
   }
 
   private updateToolHighlight(id: string): void {

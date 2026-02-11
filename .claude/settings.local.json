@@ -21,7 +21,8 @@
       "Bash(/srv/projects/GolfSim/scripts/commit-and-push.sh:*)",
       "Bash(npx tsx:*)",
       "Bash(bash:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(npx vite:*)"
     ]
   }
 }
