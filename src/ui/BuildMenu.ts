@@ -100,7 +100,6 @@ export class BuildMenu {
         onClick: () => {
           EventBus.emit('editor-select-terrain', type);
           EventBus.emit('editor-select-tool', EditorTool.PAINT_TERRAIN);
-          this.hide();
         },
       });
       btn.setDepth(MENU_DEPTH + 1);
@@ -138,7 +137,6 @@ export class BuildMenu {
       hoverColor: 0x3a6a3a,
       onClick: () => {
         EventBus.emit('editor-select-tool', EditorTool.RAISE_TERRAIN);
-        this.hide();
       },
     });
     raiseBtn.setDepth(MENU_DEPTH + 1);
@@ -157,7 +155,6 @@ export class BuildMenu {
       hoverColor: 0x6a3a3a,
       onClick: () => {
         EventBus.emit('editor-select-tool', EditorTool.LOWER_TERRAIN);
-        this.hide();
       },
     });
     lowerBtn.setDepth(MENU_DEPTH + 1);
