@@ -15,6 +15,8 @@ export class IsometricMap {
   private terrainGraphics: Phaser.GameObjects.Graphics;
   private blendGraphics: Phaser.GameObjects.Graphics;
   private cornerElevations: number[][];
+  private _terrainDirty = false;
+  private _cornersDirty = false;
 
   constructor(scene: Phaser.Scene, width: number, height: number) {
     this.scene = scene;
@@ -51,6 +53,11 @@ export class IsometricMap {
     this.container.add(this.blendGraphics);
 
     this.renderAllTiles();
+
+    this.scene.events.on('update', this.flushIfDirty, this);
+    this.scene.events.once('shutdown', () => {
+      this.scene.events.off('update', this.flushIfDirty, this);
+    });
   }
 
   static generateTileTextures(scene: Phaser.Scene): void {
@@ -157,9 +164,8 @@ export class IsometricMap {
     const clamped = Math.max(MIN_ELEVATION, Math.min(MAX_ELEVATION, elevation));
     this.elevations[tileY][tileX] = clamped;
 
-    this.computeCornerElevations();
-    this.renderTerrain();
-    this.updateBlendOverlays();
+    this._cornersDirty = true;
+    this._terrainDirty = true;
   }
 
   getSlope(tileX: number, tileY: number): { slopeX: number; slopeY: number } {
@@ -675,6 +681,21 @@ export class IsometricMap {
     graphics.lineBetween(halfW, halfH - 4, halfW, halfH + 4);
   }
 
+  private flushIfDirty(): void {
+    if (!this._cornersDirty && !this._terrainDirty) return;
+
+    if (this._cornersDirty) {
+      this.computeCornerElevations();
+      this._cornersDirty = false;
+    }
+
+    if (this._terrainDirty) {
+      this.renderTerrain();
+      this.updateBlendOverlays();
+      this._terrainDirty = false;
+    }
+  }
+
   private renderAllTiles(): void {
     this.computeCornerElevations();
     this.renderTerrain();
@@ -686,8 +707,7 @@ export class IsometricMap {
     if (this.tiles[tileY][tileX] === type) return;
 
     this.tiles[tileY][tileX] = type;
-    this.renderTerrain();
-    this.updateBlendOverlays();
+    this._terrainDirty = true;
   }
 
   getTileAt(tileX: number, tileY: number): TileType {
@@ -742,8 +762,7 @@ export class IsometricMap {
   setGridVisible(visible: boolean): void {
     if (this.gridVisible === visible) return;
     this.gridVisible = visible;
-    this.renderTerrain();
-    this.updateBlendOverlays();
+    this._terrainDirty = true;
   }
 
   updateBlendOverlays(): void {
