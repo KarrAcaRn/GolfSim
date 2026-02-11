@@ -159,6 +159,51 @@ export class BuildMenu {
     });
     lowerBtn.setDepth(MENU_DEPTH + 1);
     this.buttons.push(lowerBtn);
+    y += BUTTON_HEIGHT + BUTTON_MARGIN;
+
+    y += 6;
+
+    // === Tools Category ===
+    this.addElement(
+      this.scene.add.rectangle(MENU_X, y, MENU_WIDTH, 22, 0x333355, 1)
+        .setOrigin(0, 0),
+      MENU_DEPTH + 1
+    );
+    this.addElement(
+      this.scene.add.text(MENU_X + 6, y + 3, `▼ ${t('editor.buildMenu.tools' as any)}`, {
+        fontSize: '12px',
+        color: '#aabbff',
+        fontStyle: 'bold',
+      }).setOrigin(0, 0),
+      MENU_DEPTH + 2
+    );
+    y += 26;
+
+    // Tool buttons
+    const toolButtons: { tool: EditorTool; key: string }[] = [
+      { tool: EditorTool.PAINT_TERRAIN, key: 'editor.toolbar.paint' },
+      { tool: EditorTool.ERASE, key: 'editor.toolbar.erase' },
+      { tool: EditorTool.PLACE_HOLE, key: 'editor.toolbar.placeHole' },
+    ];
+
+    for (const { tool, key } of toolButtons) {
+      const btn = new Button(this.scene, {
+        x: MENU_X + 4,
+        y,
+        width: MENU_WIDTH - 8,
+        height: BUTTON_HEIGHT,
+        text: t(key as any),
+        fontSize: '11px',
+        bgColor: 0x2a2a44,
+        hoverColor: 0x44446a,
+        onClick: () => {
+          EventBus.emit('editor-select-tool', tool);
+        },
+      });
+      btn.setDepth(MENU_DEPTH + 1);
+      this.buttons.push(btn);
+      y += BUTTON_HEIGHT + BUTTON_MARGIN;
+    }
   }
 
   show(): void {

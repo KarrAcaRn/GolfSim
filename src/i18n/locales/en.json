@@ -49,5 +49,7 @@
   "editor.buildMenu.terrain": "Terrain",
   "editor.buildMenu.modifyTerrain": "Modify Terrain",
   "editor.buildMenu.raise": "Raise (+)",
-  "editor.buildMenu.lower": "Lower (-)"
+  "editor.buildMenu.lower": "Lower (-)",
+  "editor.buildMenu.tools": "Tools",
+  "editor.optionsMenu.title": "Options (O)"
 }
