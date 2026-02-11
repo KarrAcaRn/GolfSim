@@ -4,6 +4,7 @@ import { CameraController } from '../systems/CameraController';
 import { EditorState, EditorTool } from '../editor/EditorState';
 import { TilePlacer } from '../editor/TilePlacer';
 import { HolePlacer } from '../editor/HolePlacer';
+import { ElevationPlacer } from '../editor/ElevationPlacer';
 import { TileType } from '../models/TileTypes';
 import { CourseData, createEmptyCourse } from '../models/CourseData';
 import { MAP_WIDTH, MAP_HEIGHT } from '../utils/Constants';
@@ -17,6 +18,7 @@ export class EditorScene extends Phaser.Scene {
   private editorState!: EditorState;
   private tilePlacer!: TilePlacer;
   private holePlacer!: HolePlacer;
+  private elevationPlacer!: ElevationPlacer;
   private courseData!: CourseData;
 
   constructor() {
@@ -45,6 +47,7 @@ export class EditorScene extends Phaser.Scene {
     this.editorState = new EditorState();
     this.tilePlacer = new TilePlacer(this, this.isoMap, this.editorState);
     this.holePlacer = new HolePlacer(this, this.isoMap, this.editorState);
+    this.elevationPlacer = new ElevationPlacer(this, this.isoMap, this.editorState);
 
     // Load existing holes if any
     if (this.courseData.holes.length > 0) {
@@ -80,6 +83,10 @@ export class EditorScene extends Phaser.Scene {
 
     keyboard.on('keydown-H', () => {
       this.editorState.currentTool = EditorTool.PLACE_HOLE;
+    });
+
+    keyboard.on('keydown-B', () => {
+      EventBus.emit('toggle-build-menu');
     });
 
     keyboard.on('keydown-Z', (event: KeyboardEvent) => {

@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { Button } from '../ui/Button';
+import { BuildMenu } from '../ui/BuildMenu';
 import { TileType, TILE_PROPERTIES } from '../models/TileTypes';
 import { EditorTool } from '../editor/EditorState';
 import { t } from '../i18n/i18n';
@@ -19,6 +20,7 @@ export class UIScene extends Phaser.Scene {
   private terrainButtons: Map<TileType, Button> = new Map();
   private toolButtons: Map<string, Button> = new Map();
   private infoText!: Phaser.GameObjects.Text;
+  private buildMenu?: BuildMenu;
 
   constructor() {
     super({ key: 'UI' });
@@ -40,6 +42,10 @@ export class UIScene extends Phaser.Scene {
     this.buttons = [];
     this.terrainButtons.clear();
     this.toolButtons.clear();
+    if (this.buildMenu) {
+      this.buildMenu.destroy();
+      this.buildMenu = undefined;
+    }
   }
 
   private createEditorToolbar(): void {
@@ -186,6 +192,13 @@ export class UIScene extends Phaser.Scene {
       fontSize: '10px',
       color: '#aaaaaa',
     }).setOrigin(0.5, 1).setScrollFactor(0).setDepth(101);
+
+    // Build menu (initially hidden, toggled with B)
+    this.buildMenu = new BuildMenu(this);
+
+    EventBus.on('toggle-build-menu', () => {
+      this.buildMenu?.toggle();
+    });
   }
 
   private createPlayHUD(): void {

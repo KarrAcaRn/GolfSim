@@ -71,6 +71,16 @@ export class Button {
     this.label.setDepth(depth + 1);
   }
 
+  setVisible(visible: boolean): void {
+    this.bg.setVisible(visible);
+    this.label.setVisible(visible);
+    if (visible) {
+      this.bg.setInteractive();
+    } else {
+      this.bg.disableInteractive();
+    }
+  }
+
   destroy(): void {
     this.bg.destroy();
     this.label.destroy();

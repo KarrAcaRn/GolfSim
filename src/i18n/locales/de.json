@@ -44,5 +44,10 @@
   "clubs.putter": "Putter",
   "clubs.teeOnly": "Der Driver kann nur auf dem Tee verwendet werden!",
   "shotPanel.title": "Schlag",
-  "shotPanel.spin": "Spin"
+  "shotPanel.spin": "Spin",
+  "editor.buildMenu.title": "Bau-Menue (B)",
+  "editor.buildMenu.terrain": "Terrain",
+  "editor.buildMenu.modifyTerrain": "Gelaende veraendern",
+  "editor.buildMenu.raise": "Erhoehen (+)",
+  "editor.buildMenu.lower": "Senken (-)"
 }

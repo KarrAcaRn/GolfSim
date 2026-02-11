@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { TILE_WIDTH, TILE_HEIGHT } from '../utils/Constants';
+import { TILE_WIDTH, TILE_HEIGHT, ELEVATION_STEP, MIN_ELEVATION, MAX_ELEVATION } from '../utils/Constants';
 import { TileType, TILE_PROPERTIES } from '../models/TileTypes';
 import { CourseData } from '../models/CourseData';
 import { tileToWorld } from '../utils/IsoUtils';
@@ -12,6 +12,8 @@ export class IsometricMap {
   private tileSprites: (Phaser.GameObjects.Image | null)[][];
   private container: Phaser.GameObjects.Container;
   private gridVisible: boolean = true;
+  private elevations: number[][];
+  private sideGraphics: Phaser.GameObjects.Graphics;
   private blendGraphics: Phaser.GameObjects.Graphics;
 
   constructor(scene: Phaser.Scene, width: number, height: number) {
@@ -27,6 +29,17 @@ export class IsometricMap {
       this.tiles[y] = new Array(width).fill(TileType.GRASS);
       this.tileSprites[y] = new Array(width).fill(null);
     }
+
+    // Initialize elevations
+    this.elevations = [];
+    for (let y = 0; y < height; y++) {
+      this.elevations[y] = new Array(width).fill(0);
+    }
+
+    // Side face graphics (rendered below blends)
+    this.sideGraphics = scene.add.graphics();
+    this.sideGraphics.setDepth(0.5);
+    this.container.add(this.sideGraphics);
 
     // Blend overlay graphics
     this.blendGraphics = scene.add.graphics();
@@ -126,6 +139,105 @@ export class IsometricMap {
     const dy = Math.abs(y - halfH) / halfH;
     const extent = halfW * (1 - dy);
     return { minX: halfW - extent, maxX: halfW + extent };
+  }
+
+  // === Elevation Methods ===
+
+  getElevationAt(tileX: number, tileY: number): number {
+    if (!this.isInBounds(tileX, tileY)) return 0;
+    return this.elevations[tileY][tileX];
+  }
+
+  setElevationAt(tileX: number, tileY: number, elevation: number): void {
+    if (!this.isInBounds(tileX, tileY)) return;
+    const clamped = Math.max(MIN_ELEVATION, Math.min(MAX_ELEVATION, elevation));
+    this.elevations[tileY][tileX] = clamped;
+
+    // Update sprite Y position
+    const sprite = this.tileSprites[tileY][tileX];
+    if (sprite) {
+      const worldPos = tileToWorld(tileX, tileY);
+      sprite.y = worldPos.y + this.getOffsetY() - clamped * ELEVATION_STEP;
+    }
+
+    this.updateSideFaces();
+    this.updateBlendOverlays();
+  }
+
+  getSlope(tileX: number, tileY: number): { slopeX: number; slopeY: number } {
+    const eE = this.getElevationAt(tileX + 1, tileY);
+    const eW = this.getElevationAt(tileX - 1, tileY);
+    const eS = this.getElevationAt(tileX, tileY + 1);
+    const eN = this.getElevationAt(tileX, tileY - 1);
+
+    // Tile-space gradient (positive = higher to east/south)
+    const gradX = (eE - eW) / 2;
+    const gradY = (eS - eN) / 2;
+
+    // Convert to world-space (isometric projection)
+    // In iso: worldX ~ (tileX - tileY), worldY ~ (tileX + tileY)
+    // Slope pushes ball "downhill" = toward lower elevation
+    const worldSlopeX = (gradX - gradY);
+    const worldSlopeY = (gradX + gradY) * 0.5;
+
+    return { slopeX: worldSlopeX, slopeY: worldSlopeY };
+  }
+
+  private updateSideFaces(): void {
+    this.sideGraphics.clear();
+    const offsetX = this.getOffsetX();
+    const offsetY = this.getOffsetY();
+    const halfW = TILE_WIDTH / 2;
+    const halfH = TILE_HEIGHT / 2;
+
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        const elev = this.elevations[y][x];
+        const tileType = this.tiles[y][x];
+        const baseColor = TILE_PROPERTIES[tileType].color;
+        const worldPos = tileToWorld(x, y);
+        const cx = worldPos.x + offsetX;
+        const cy = worldPos.y + offsetY - elev * ELEVATION_STEP;
+
+        // South neighbor (y+1) - bottom-left face
+        const southElev = this.isInBounds(x, y + 1) ? this.elevations[y + 1][x] : 0;
+        if (elev > southElev) {
+          const diff = (elev - southElev) * ELEVATION_STEP;
+          const darkColor = IsometricMap.adjustColor(baseColor, -40);
+          this.sideGraphics.fillStyle(darkColor, 1);
+          this.sideGraphics.beginPath();
+          // Top-left: left vertex of diamond
+          this.sideGraphics.moveTo(cx - halfW, cy);
+          // Top-right: bottom vertex of diamond
+          this.sideGraphics.lineTo(cx, cy + halfH);
+          // Bottom-right: extended down
+          this.sideGraphics.lineTo(cx, cy + halfH + diff);
+          // Bottom-left: extended down
+          this.sideGraphics.lineTo(cx - halfW, cy + diff);
+          this.sideGraphics.closePath();
+          this.sideGraphics.fillPath();
+        }
+
+        // East neighbor (x+1) - bottom-right face
+        const eastElev = this.isInBounds(x + 1, y) ? this.elevations[y][x + 1] : 0;
+        if (elev > eastElev) {
+          const diff = (elev - eastElev) * ELEVATION_STEP;
+          const darkerColor = IsometricMap.adjustColor(baseColor, -55);
+          this.sideGraphics.fillStyle(darkerColor, 1);
+          this.sideGraphics.beginPath();
+          // Top-left: bottom vertex of diamond
+          this.sideGraphics.moveTo(cx, cy + halfH);
+          // Top-right: right vertex of diamond
+          this.sideGraphics.lineTo(cx + halfW, cy);
+          // Bottom-right: extended down
+          this.sideGraphics.lineTo(cx + halfW, cy + diff);
+          // Bottom-left: extended down
+          this.sideGraphics.lineTo(cx, cy + halfH + diff);
+          this.sideGraphics.closePath();
+          this.sideGraphics.fillPath();
+        }
+      }
+    }
   }
 
   // === Pattern Drawing Methods ===
@@ -388,12 +500,14 @@ export class IsometricMap {
           key
         );
         sprite.setOrigin(0.5, 0.5);
+        sprite.y -= this.elevations[y][x] * ELEVATION_STEP;
         this.container.add(sprite);
         this.tileSprites[y][x] = sprite;
       }
     }
 
     this.updateBlendOverlays();
+    this.updateSideFaces();
   }
 
   setTileAt(tileX: number, tileY: number, type: TileType): void {
@@ -409,6 +523,7 @@ export class IsometricMap {
       sprite.setTexture(`tile_${type}${suffix}`);
     }
 
+    this.updateSideFaces();
     this.updateBlendOverlays();
   }
 
@@ -489,7 +604,7 @@ export class IsometricMap {
         const tileColor = TILE_PROPERTIES[tileType].color;
         const worldPos = tileToWorld(x, y);
         const cx = worldPos.x + offsetX;
-        const cy = worldPos.y + offsetY;
+        const cy = worldPos.y + offsetY - this.elevations[y][x] * ELEVATION_STEP;
 
         // Check 4 neighbors: N(x,y-1), E(x+1,y), S(x,y+1), W(x-1,y)
         const neighbors = [
@@ -523,13 +638,34 @@ export class IsometricMap {
       }
     }
 
+    // Load elevations (backwards compatible - default to 0 if not present)
+    if (data.elevations) {
+      for (let y = 0; y < Math.min(data.height, this.height); y++) {
+        for (let x = 0; x < Math.min(data.width, this.width); x++) {
+          this.elevations[y][x] = data.elevations[y][x] ?? 0;
+        }
+      }
+    }
+
     this.updateBlendOverlays();
+    this.updateSideFaces();
+    // Update sprite Y positions for elevation
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        const sprite = this.tileSprites[y][x];
+        if (sprite && this.elevations[y][x] !== 0) {
+          const worldPos = tileToWorld(x, y);
+          sprite.y = worldPos.y + this.getOffsetY() - this.elevations[y][x] * ELEVATION_STEP;
+        }
+      }
+    }
   }
 
-  exportData(): { width: number; height: number; tiles: TileType[][] } {
-    // Deep copy tiles
+  exportData(): { width: number; height: number; tiles: TileType[][]; elevations: number[][] } {
+    // Deep copy tiles and elevations
     const tiles = this.tiles.map(row => [...row]);
-    return { width: this.width, height: this.height, tiles };
+    const elevations = this.elevations.map(row => [...row]);
+    return { width: this.width, height: this.height, tiles, elevations };
   }
 
   getContainer(): Phaser.GameObjects.Container {

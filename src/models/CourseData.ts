@@ -25,6 +25,7 @@ export interface CourseData {
   width: number;
   height: number;
   tiles: TileType[][];
+  elevations?: number[][];
   holes: HoleData[];
   objects: PlacedObject[];
   metadata: CourseMetadata;
@@ -32,14 +33,17 @@ export interface CourseData {
 
 export function createEmptyCourse(width: number, height: number): CourseData {
   const tiles: TileType[][] = [];
+  const elevations: number[][] = [];
   for (let y = 0; y < height; y++) {
     tiles[y] = new Array(width).fill(TileType.GRASS);
+    elevations[y] = new Array(width).fill(0);
   }
   return {
     name: 'New Course',
     width,
     height,
     tiles,
+    elevations,
     holes: [],
     objects: [],
     metadata: {

@@ -6,6 +6,7 @@ import { SPIN_DECAY } from '../models/Club';
 import {
   GRAVITY, MIN_BOUNCE_VZ,
   TRAJECTORY_DT,
+  ELEVATION_STEP, SLOPE_BOUNCE_FACTOR, SLOPE_ROLL_ACCEL,
 } from '../utils/Constants';
 
 const STOP_THRESHOLD = 3;
@@ -177,7 +178,9 @@ export class BallPhysics {
         this.isRolling = true;
         this.groundVx *= props.landingSpeedFactor;
         this.groundVy *= props.landingSpeedFactor;
-        this.ball.setPosition(this.groundX, this.groundY);
+        const { tileX: ltx, tileY: lty } = this.isoMap.worldToTile(this.groundX, this.groundY);
+        const landElev = this.isoMap.getElevationAt(ltx, lty);
+        this.ball.setPosition(this.groundX, this.groundY - landElev * ELEVATION_STEP);
 
         // Check if landed on hazard (water or out-of-bounds)
         if (this.isHazard(this.groundX, this.groundY)) {
@@ -229,7 +232,9 @@ export class BallPhysics {
     }
 
     this.lastSafePosition = { x: this.groundX, y: this.groundY };
-    this.ball.setPosition(this.groundX, this.groundY);
+    const { tileX: gtx, tileY: gty } = this.isoMap.worldToTile(this.groundX, this.groundY);
+    const groundElev = this.isoMap.getElevationAt(gtx, gty);
+    this.ball.setPosition(this.groundX, this.groundY - groundElev * ELEVATION_STEP);
   }
 
   private drawShadow(): void {
@@ -242,7 +247,9 @@ export class BallPhysics {
     const alpha = 0.4 * shadowScale;
 
     this.shadowGraphics.fillStyle(0x000000, alpha);
-    this.shadowGraphics.fillEllipse(this.groundX, this.groundY, rx * 2, ry * 2);
+    const { tileX: stx, tileY: sty } = this.isoMap.worldToTile(this.groundX, this.groundY);
+    const shadowElev = this.isoMap.getElevationAt(stx, sty);
+    this.shadowGraphics.fillEllipse(this.groundX, this.groundY - shadowElev * ELEVATION_STEP, rx * 2, ry * 2);
   }
 
   private applyBounce(state: BallState, terrainProps: typeof TILE_PROPERTIES[TileType]): void {
@@ -264,12 +271,24 @@ export class BallPhysics {
       state.vy = newVy;
       state.spinAngle *= SPIN_DECAY;
     }
+
+    // Apply slope influence on bounce
+    const { tileX, tileY } = this.isoMap.worldToTile(state.x, state.y);
+    const slope = this.isoMap.getSlope(tileX, tileY);
+    state.vx += slope.slopeX * SLOPE_BOUNCE_FACTOR;
+    state.vy += slope.slopeY * SLOPE_BOUNCE_FACTOR;
   }
 
   private applyGroundRollStep(state: BallState, dt: number): number {
     // Get terrain friction at current position
     const tileType = this.getTerrainAtWorld(state.x, state.y);
     const props = TILE_PROPERTIES[tileType];
+
+    // Apply slope acceleration (ball rolls downhill)
+    const { tileX, tileY } = this.isoMap.worldToTile(state.x, state.y);
+    const slope = this.isoMap.getSlope(tileX, tileY);
+    state.vx += slope.slopeX * SLOPE_ROLL_ACCEL * dt;
+    state.vy += slope.slopeY * SLOPE_ROLL_ACCEL * dt;
 
     // Calculate speed before friction
     const speed = Math.sqrt(state.vx * state.vx + state.vy * state.vy);
@@ -415,7 +434,9 @@ export class BallPhysics {
   }
 
   moveBallTo(worldX: number, worldY: number): void {
-    this.ball.setPosition(worldX, worldY);
+    const { tileX: mtx, tileY: mty } = this.isoMap.worldToTile(worldX, worldY);
+    const moveElev = this.isoMap.getElevationAt(mtx, mty);
+    this.ball.setPosition(worldX, worldY - moveElev * ELEVATION_STEP);
     this.groundX = worldX;
     this.groundY = worldY;
     this.groundVx = 0;
