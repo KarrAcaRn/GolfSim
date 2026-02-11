@@ -15,6 +15,10 @@ export const GAME_CONFIG: Phaser.Types.Core.GameConfig = {
   backgroundColor: '#1a3d1a',
   pixelArt: true,
   roundPixels: true,
+  fps: {
+    target: 30,
+    forceSetTimeOut: true,
+  },
   physics: {
     default: 'arcade',
     arcade: {
