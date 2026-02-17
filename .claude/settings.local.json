@@ -23,7 +23,8 @@
       "Bash(bash:*)",
       "Bash(npm run build:*)",
       "Bash(npx vite:*)",
-      "Bash(scripts/commit-and-push.sh:*)"
+      "Bash(scripts/commit-and-push.sh:*)",
+      "Bash(file:*)"
     ]
   }
 }
