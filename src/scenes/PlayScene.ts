@@ -28,7 +28,7 @@ export class PlayScene extends Phaser.Scene {
     strokeText: Phaser.GameObjects.Text;
     messageText: Phaser.GameObjects.Text;
   };
-  private markerGraphics!: Phaser.GameObjects.Graphics;
+  private markerSprites: Phaser.GameObjects.Image[] = [];
 
   constructor() {
     super({ key: 'Play' });
@@ -50,8 +50,6 @@ export class PlayScene extends Phaser.Scene {
     this.cameraController = new CameraController(this);
 
     // Hole markers
-    this.markerGraphics = this.add.graphics();
-    this.markerGraphics.setDepth(500);
     this.renderHoleMarkers();
 
     // Ball physics
@@ -258,23 +256,21 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private renderHoleMarkers(): void {
+    this.markerSprites.forEach(s => s.destroy());
+    this.markerSprites = [];
+
     for (const hole of this.courseData.holes) {
       // Flag on green
       const flagPos = this.isoMap.tileToWorld(hole.flagPosition.tileX, hole.flagPosition.tileY);
-      this.markerGraphics.lineStyle(2, 0x333333, 1);
-      this.markerGraphics.lineBetween(flagPos.x, flagPos.y, flagPos.x, flagPos.y - 18);
-      this.markerGraphics.fillStyle(0xff0000, 1);
-      this.markerGraphics.fillTriangle(
-        flagPos.x, flagPos.y - 18,
-        flagPos.x + 12, flagPos.y - 13,
-        flagPos.x, flagPos.y - 8
-      );
+      const flagSprite = this.add.image(flagPos.x, flagPos.y - 12, 'flag');
+      flagSprite.setDepth(500).setOrigin(0.5, 1);
+      this.markerSprites.push(flagSprite);
 
       // Tee marker
       const teePos = this.isoMap.tileToWorld(hole.teePosition.tileX, hole.teePosition.tileY);
-      this.markerGraphics.lineStyle(2, 0xffffff, 0.8);
-      this.markerGraphics.lineBetween(teePos.x - 6, teePos.y - 10, teePos.x + 6, teePos.y - 10);
-      this.markerGraphics.lineBetween(teePos.x, teePos.y - 10, teePos.x, teePos.y);
+      const teeSprite = this.add.image(teePos.x, teePos.y - 6, 'tee_marker');
+      teeSprite.setDepth(500).setOrigin(0.5, 1);
+      this.markerSprites.push(teeSprite);
     }
   }
 
@@ -292,6 +288,7 @@ export class PlayScene extends Phaser.Scene {
   }
 
   shutdown(): void {
+    this.markerSprites.forEach(s => s.destroy());
     EventBus.removeAllListeners();
     this.ballPhysics.destroy();
     this.aimingSystem.destroy();

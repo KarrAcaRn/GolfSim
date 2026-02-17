@@ -3,7 +3,6 @@ import { IsometricMap } from '../systems/IsometricMap';
 import { EditorState, EditorTool } from './EditorState';
 import { HoleData, TileCoord } from '../models/HoleData';
 import { TileType } from '../models/TileTypes';
-import { TILE_WIDTH, TILE_HEIGHT } from '../utils/Constants';
 import { EventBus } from '../utils/EventBus';
 
 export enum HolePlaceStep {
@@ -19,6 +18,7 @@ export class HolePlacer {
   private step: HolePlaceStep = HolePlaceStep.PLACE_TEE;
   private pendingTee: TileCoord | null = null;
   private markerGraphics: Phaser.GameObjects.Graphics;
+  private markerSprites: Phaser.GameObjects.Image[] = [];
   private instructionText: Phaser.GameObjects.Text;
 
   constructor(scene: Phaser.Scene, isoMap: IsometricMap, state: EditorState) {
@@ -112,35 +112,27 @@ export class HolePlacer {
   }
 
   renderMarkers(): void {
+    // Clean up old sprites
+    this.markerSprites.forEach(s => s.destroy());
+    this.markerSprites = [];
     this.markerGraphics.clear();
-    const halfW = TILE_WIDTH / 2;
 
-    // Render all placed holes
+    // Render all placed holes as sprites
     for (const hole of this.holes) {
-      // Tee marker (white T)
+      // Tee marker sprite
       const teePos = this.isoMap.tileToWorld(hole.teePosition.tileX, hole.teePosition.tileY);
-      this.markerGraphics.lineStyle(2, 0xffffff, 1);
-      this.markerGraphics.lineBetween(teePos.x - 6, teePos.y - 10, teePos.x + 6, teePos.y - 10);
-      this.markerGraphics.lineBetween(teePos.x, teePos.y - 10, teePos.x, teePos.y);
+      const teeSprite = this.scene.add.image(teePos.x, teePos.y - 6, 'tee_marker');
+      teeSprite.setDepth(500).setOrigin(0.5, 1);
+      this.markerSprites.push(teeSprite);
 
-      // Flag marker (red flag on stick)
+      // Flag marker sprite
       const flagPos = this.isoMap.tileToWorld(hole.flagPosition.tileX, hole.flagPosition.tileY);
-      this.markerGraphics.lineStyle(2, 0x333333, 1);
-      this.markerGraphics.lineBetween(flagPos.x, flagPos.y, flagPos.x, flagPos.y - 16);
-      this.markerGraphics.fillStyle(0xff0000, 1);
-      this.markerGraphics.fillTriangle(
-        flagPos.x, flagPos.y - 16,
-        flagPos.x + 10, flagPos.y - 12,
-        flagPos.x, flagPos.y - 8
-      );
-
-      // Hole number
-      // Use a small circle to mark the hole
-      this.markerGraphics.fillStyle(0x000000, 0.7);
-      this.markerGraphics.fillCircle(flagPos.x, flagPos.y + 4, 6);
+      const flagSprite = this.scene.add.image(flagPos.x, flagPos.y - 12, 'flag');
+      flagSprite.setDepth(500).setOrigin(0.5, 1);
+      this.markerSprites.push(flagSprite);
     }
 
-    // Render pending tee
+    // Render pending tee (keep as Graphics - dynamic indicator)
     if (this.pendingTee) {
       const teePos = this.isoMap.tileToWorld(this.pendingTee.tileX, this.pendingTee.tileY);
       this.markerGraphics.lineStyle(2, 0x00ff00, 1);
@@ -165,6 +157,7 @@ export class HolePlacer {
 
   destroy(): void {
     this.scene.input.off('pointerdown', this.onPointerDown, this);
+    this.markerSprites.forEach(s => s.destroy());
     this.markerGraphics.destroy();
     this.instructionText.destroy();
   }

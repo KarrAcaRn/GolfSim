@@ -59,16 +59,6 @@ export class BallPhysics {
   }
 
   createBall(worldX: number, worldY: number): Phaser.Types.Physics.Arcade.SpriteWithDynamicBody {
-    if (!this.scene.textures.exists('ball')) {
-      const g = this.scene.add.graphics();
-      g.fillStyle(0xffffff, 1);
-      g.fillCircle(5, 5, 5);
-      g.lineStyle(1, 0x888888, 1);
-      g.strokeCircle(5, 5, 5);
-      g.generateTexture('ball', 10, 10);
-      g.destroy();
-    }
-
     this.ball = this.scene.physics.add.sprite(worldX, worldY, 'ball');
     this.ball.setCircle(5);
     this.ball.setDepth(800);

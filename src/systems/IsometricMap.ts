@@ -12,7 +12,8 @@ export class IsometricMap {
   private container: Phaser.GameObjects.Container;
   private gridVisible: boolean = true;
   private elevations: number[][];
-  private terrainGraphics: Phaser.GameObjects.Graphics;
+  private tileSprites: Phaser.GameObjects.Image[][] = [];
+  private gridGraphics: Phaser.GameObjects.Graphics;
   private blendGraphics: Phaser.GameObjects.Graphics;
   private cornerElevations: number[][];
   private _terrainDirty = false;
@@ -42,15 +43,33 @@ export class IsometricMap {
       this.cornerElevations[j] = new Array(width + 1).fill(0);
     }
 
-    // Terrain mesh graphics
-    this.terrainGraphics = scene.add.graphics();
-    this.terrainGraphics.setDepth(0);
-    this.container.add(this.terrainGraphics);
+    // Create tile sprites (instead of terrainGraphics)
+    this.tileSprites = [];
+    for (let y = 0; y < height; y++) {
+      this.tileSprites[y] = [];
+      for (let x = 0; x < width; x++) {
+        const worldPos = tileToWorld(x, y);
+        const sprite = scene.add.image(
+          worldPos.x + this.getOffsetX(),
+          worldPos.y + this.getOffsetY(),
+          `tile_${this.tiles[y][x]}`
+        );
+        sprite.setOrigin(0.5, 0.5);
+        sprite.setDepth(y + x * 0.01);
+        this.container.add(sprite);
+        this.tileSprites[y][x] = sprite;
+      }
+    }
 
     // Blend overlay graphics
     this.blendGraphics = scene.add.graphics();
     this.blendGraphics.setDepth(1); // just above tiles
     this.container.add(this.blendGraphics);
+
+    // Grid overlay graphics (separate from tiles)
+    this.gridGraphics = scene.add.graphics();
+    this.gridGraphics.setDepth(2); // above tiles and blends
+    this.container.add(this.gridGraphics);
 
     this.renderAllTiles();
 
@@ -59,25 +78,6 @@ export class IsometricMap {
       this.scene.events.off('update', this.flushIfDirty, this);
     });
   }
-
-
-  // === Helper Methods for Texture Generation ===
-
-  private static seededRandom(seed: number): () => number {
-    let s = seed;
-    return () => {
-      s = (s * 1664525 + 1013904223) & 0xffffffff;
-      return (s >>> 0) / 0xffffffff;
-    };
-  }
-
-  private static adjustColor(color: number, amount: number): number {
-    const r = Math.min(255, Math.max(0, ((color >> 16) & 0xff) + amount));
-    const g = Math.min(255, Math.max(0, ((color >> 8) & 0xff) + amount));
-    const b = Math.min(255, Math.max(0, (color & 0xff) + amount));
-    return (r << 16) | (g << 8) | b;
-  }
-
 
 
   // === Elevation Methods ===
@@ -146,231 +146,73 @@ export class IsometricMap {
 
   // === World Position Methods ===
 
-  private getCornerWorldPos(i: number, j: number): { x: number; y: number } {
-    const halfW = TILE_WIDTH / 2;  // 32
-    const halfH = TILE_HEIGHT / 2; // 16
-    const offsetX = this.getOffsetX();
-    const offsetY = this.getOffsetY();
-
-    return {
-      x: (i - j) * halfW + offsetX,
-      y: (i + j) * halfH - halfH + offsetY - this.cornerElevations[j][i] * ELEVATION_STEP
-    };
-  }
-
   getTileCorners(x: number, y: number): { n: { x: number; y: number }; e: { x: number; y: number }; s: { x: number; y: number }; w: { x: number; y: number } } {
+    const sprite = this.tileSprites[y][x];
+    const cx = sprite.x;
+    const cy = sprite.y;
+    const hw = TILE_WIDTH / 2;
+    const hh = TILE_HEIGHT / 2;
+
     return {
-      n: this.getCornerWorldPos(x, y),       // top corner
-      e: this.getCornerWorldPos(x + 1, y),   // right corner
-      s: this.getCornerWorldPos(x + 1, y + 1), // bottom corner
-      w: this.getCornerWorldPos(x, y + 1)    // left corner
+      n: { x: cx, y: cy - hh },
+      e: { x: cx + hw, y: cy },
+      s: { x: cx, y: cy + hh },
+      w: { x: cx - hw, y: cy },
     };
   }
 
   // === Terrain Rendering ===
 
   private renderTerrain(): void {
-    this.terrainGraphics.clear();
-
-    // Render tiles in order for proper overlap
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
-        const tileType = this.tiles[y][x];
-        const color = TILE_PROPERTIES[tileType].color;
-        const corners = this.getTileCorners(x, y);
+        const sprite = this.tileSprites[y][x];
+        sprite.setTexture(`tile_${this.tiles[y][x]}`);
 
-        // Draw filled polygon (tile top face)
-        this.terrainGraphics.fillStyle(color, 1);
-        this.terrainGraphics.beginPath();
-        this.terrainGraphics.moveTo(corners.n.x, corners.n.y);
-        this.terrainGraphics.lineTo(corners.e.x, corners.e.y);
-        this.terrainGraphics.lineTo(corners.s.x, corners.s.y);
-        this.terrainGraphics.lineTo(corners.w.x, corners.w.y);
-        this.terrainGraphics.closePath();
-        this.terrainGraphics.fillPath();
+        const worldPos = tileToWorld(x, y);
+        const avgElev = this.getAverageElevation(x, y);
+        sprite.setPosition(
+          worldPos.x + this.getOffsetX(),
+          worldPos.y + this.getOffsetY() - avgElev * ELEVATION_STEP
+        );
+        sprite.setDepth(y + x * 0.01);
+      }
+    }
+    this.renderGrid();
+  }
 
-        // Draw grid outline if visible
-        if (this.gridVisible) {
-          this.terrainGraphics.lineStyle(1, 0x000000, 0.3);
-          this.terrainGraphics.strokePath();
-        }
+  private getAverageElevation(x: number, y: number): number {
+    return (
+      this.cornerElevations[y][x] +
+      this.cornerElevations[y][x + 1] +
+      this.cornerElevations[y + 1][x + 1] +
+      this.cornerElevations[y + 1][x]
+    ) / 4;
+  }
 
-        // Draw tile pattern
-        this.renderTilePattern(x, y, corners);
+  private renderGrid(): void {
+    this.gridGraphics.clear();
+    if (!this.gridVisible) return;
+
+    this.gridGraphics.lineStyle(1, 0x000000, 0.3);
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        const sprite = this.tileSprites[y][x];
+        const cx = sprite.x;
+        const cy = sprite.y;
+        const hw = TILE_WIDTH / 2;
+        const hh = TILE_HEIGHT / 2;
+
+        this.gridGraphics.beginPath();
+        this.gridGraphics.moveTo(cx, cy - hh);
+        this.gridGraphics.lineTo(cx + hw, cy);
+        this.gridGraphics.lineTo(cx, cy + hh);
+        this.gridGraphics.lineTo(cx - hw, cy);
+        this.gridGraphics.closePath();
+        this.gridGraphics.strokePath();
       }
     }
   }
-
-  private renderTilePattern(x: number, y: number, corners: { n: { x: number; y: number }; e: { x: number; y: number }; s: { x: number; y: number }; w: { x: number; y: number } }): void {
-    const tileType = this.tiles[y][x];
-    const color = TILE_PROPERTIES[tileType].color;
-    const rand = IsometricMap.seededRandom(x * 100 + y);
-
-    // Calculate tile center
-    const centerX = (corners.n.x + corners.e.x + corners.s.x + corners.w.x) / 4;
-    const centerY = (corners.n.y + corners.e.y + corners.s.y + corners.w.y) / 4;
-
-    // Helper function to lerp between two points
-    const lerp = (p1: { x: number; y: number }, p2: { x: number; y: number }, t: number) => ({
-      x: p1.x + (p2.x - p1.x) * t,
-      y: p1.y + (p2.y - p1.y) * t
-    });
-
-    switch (tileType) {
-      case TileType.GRASS:
-        // 5-8 short lines in slightly varied color
-        {
-          const lineCount = Math.floor(rand() * 4) + 5;
-          for (let i = 0; i < lineCount; i++) {
-            const colorVariation = rand() < 0.5 ? -15 : 15;
-            const lineColor = IsometricMap.adjustColor(color, colorVariation);
-            const angle = rand() * Math.PI * 2;
-            const length = rand() * 2 + 2;
-            const px = centerX + (rand() - 0.5) * 20;
-            const py = centerY + (rand() - 0.5) * 10;
-            const x2 = px + Math.cos(angle) * length;
-            const y2 = py + Math.sin(angle) * length;
-
-            this.terrainGraphics.lineStyle(1, lineColor, 0.8);
-            this.terrainGraphics.lineBetween(px, py, x2, y2);
-          }
-        }
-        break;
-
-      case TileType.FAIRWAY:
-        // 2-3 lighter-colored stripes
-        {
-          const stripeCount = Math.floor(rand() * 2) + 2;
-          const lighterColor = IsometricMap.adjustColor(color, 12);
-          this.terrainGraphics.lineStyle(2, lighterColor, 0.3);
-
-          for (let i = 0; i < stripeCount; i++) {
-            const t = (i + 1) / (stripeCount + 1);
-            const p1 = lerp(corners.w, corners.n, t);
-            const p2 = lerp(corners.s, corners.e, t);
-            this.terrainGraphics.lineBetween(p1.x, p1.y, p2.x, p2.y);
-          }
-        }
-        break;
-
-      case TileType.GREEN:
-        // Fine horizontal lines
-        {
-          const lineCount = 5;
-          const lighterColor = IsometricMap.adjustColor(color, 8);
-          this.terrainGraphics.lineStyle(1, lighterColor, 0.2);
-
-          for (let i = 0; i < lineCount; i++) {
-            const t = (i + 1) / (lineCount + 1);
-            const p1 = lerp(corners.w, corners.n, t);
-            const p2 = lerp(corners.s, corners.e, t);
-            this.terrainGraphics.lineBetween(p1.x, p1.y, p2.x, p2.y);
-          }
-        }
-        break;
-
-      case TileType.SAND:
-        // 8-10 random dots
-        {
-          const dotCount = Math.floor(rand() * 3) + 8;
-          for (let i = 0; i < dotCount; i++) {
-            const px = centerX + (rand() - 0.5) * 24;
-            const py = centerY + (rand() - 0.5) * 12;
-            const colorVariation = rand() < 0.5 ? 20 : -15;
-            const dotColor = IsometricMap.adjustColor(color, colorVariation);
-            this.terrainGraphics.fillStyle(dotColor, 0.5);
-            this.terrainGraphics.fillCircle(px, py, 1);
-          }
-        }
-        break;
-
-      case TileType.WATER:
-        // 2-3 wavy lines
-        {
-          const waveCount = Math.floor(rand() * 2) + 2;
-          const lighterColor = IsometricMap.adjustColor(color, 30);
-          this.terrainGraphics.lineStyle(1, lighterColor, 0.4);
-
-          for (let i = 0; i < waveCount; i++) {
-            const t = (i + 1) / (waveCount + 1);
-            const p1 = lerp(corners.w, corners.n, t);
-            const p2 = lerp(corners.s, corners.e, t);
-            const phase = rand() * Math.PI * 2;
-            const amplitude = 2;
-
-            this.terrainGraphics.beginPath();
-            let firstPoint = true;
-            for (let step = 0; step <= 16; step++) {
-              const st = step / 16;
-              const px = p1.x + (p2.x - p1.x) * st;
-              const py = p1.y + (p2.y - p1.y) * st + Math.sin(st * Math.PI * 2 + phase) * amplitude;
-
-              if (firstPoint) {
-                this.terrainGraphics.moveTo(px, py);
-                firstPoint = false;
-              } else {
-                this.terrainGraphics.lineTo(px, py);
-              }
-            }
-            this.terrainGraphics.strokePath();
-          }
-        }
-        break;
-
-      case TileType.ROUGH:
-        // 10-15 short dark lines
-        {
-          const lineCount = Math.floor(rand() * 6) + 10;
-          for (let i = 0; i < lineCount; i++) {
-            const lineColor = IsometricMap.adjustColor(color, -20);
-            const angle = rand() * Math.PI * 2;
-            const length = rand() * 2 + 3;
-            const px = centerX + (rand() - 0.5) * 20;
-            const py = centerY + (rand() - 0.5) * 10;
-            const x2 = px + Math.cos(angle) * length;
-            const y2 = py + Math.sin(angle) * length;
-
-            this.terrainGraphics.lineStyle(1, lineColor, 0.8);
-            this.terrainGraphics.lineBetween(px, py, x2, y2);
-          }
-        }
-        break;
-
-      case TileType.TEE:
-        // Fairway stripes + center circle marker
-        {
-          // Draw stripes first
-          const stripeCount = 2;
-          const lighterColor = IsometricMap.adjustColor(color, 12);
-          this.terrainGraphics.lineStyle(2, lighterColor, 0.3);
-
-          for (let i = 0; i < stripeCount; i++) {
-            const t = (i + 1) / (stripeCount + 1);
-            const p1 = lerp(corners.w, corners.n, t);
-            const p2 = lerp(corners.s, corners.e, t);
-            this.terrainGraphics.lineBetween(p1.x, p1.y, p2.x, p2.y);
-          }
-
-          // Draw center marker
-          const markerColor = IsometricMap.adjustColor(color, 25);
-          this.terrainGraphics.fillStyle(markerColor, 0.8);
-          this.terrainGraphics.fillCircle(centerX, centerY, 3);
-
-          // Add cross lines
-          this.terrainGraphics.lineStyle(1, markerColor, 0.8);
-          this.terrainGraphics.lineBetween(centerX - 4, centerY, centerX + 4, centerY);
-          this.terrainGraphics.lineBetween(centerX, centerY - 4, centerX, centerY + 4);
-        }
-        break;
-    }
-  }
-
-
-
-
-
-
-
 
   private flushIfDirty(): void {
     if (!this._cornersDirty && !this._terrainDirty) return;
@@ -398,6 +240,8 @@ export class IsometricMap {
     if (this.tiles[tileY][tileX] === type) return;
 
     this.tiles[tileY][tileX] = type;
+    // Immediate sprite texture update for editor responsiveness
+    this.tileSprites[tileY][tileX].setTexture(`tile_${type}`);
     this._terrainDirty = true;
   }
 
@@ -458,31 +302,19 @@ export class IsometricMap {
 
   updateBlendOverlays(): void {
     this.blendGraphics.clear();
-    const offsetX = this.getOffsetX();
-    const offsetY = this.getOffsetY();
 
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
         const tileType = this.tiles[y][x];
-        const tileColor = TILE_PROPERTIES[tileType].color;
-        const worldPos = tileToWorld(x, y);
-        const cx = worldPos.x + offsetX;
+        const sprite = this.tileSprites[y][x];
+        const cx = sprite.x;
+        const cy = sprite.y;
 
-        // Use average corner elevation for this tile
-        const avgElev = (
-          this.cornerElevations[y][x] +
-          this.cornerElevations[y][x + 1] +
-          this.cornerElevations[y + 1][x + 1] +
-          this.cornerElevations[y + 1][x]
-        ) / 4;
-        const cy = worldPos.y + offsetY - avgElev * ELEVATION_STEP;
-
-        // Check 4 neighbors: N(x,y-1), E(x+1,y), S(x,y+1), W(x-1,y)
         const neighbors = [
-          { dx: 0, dy: -1, ox: 0, oy: -TILE_HEIGHT / 4 },   // North
-          { dx: 1, dy: 0,  ox: TILE_WIDTH / 4, oy: 0 },      // East
-          { dx: 0, dy: 1,  ox: 0, oy: TILE_HEIGHT / 4 },     // South
-          { dx: -1, dy: 0, ox: -TILE_WIDTH / 4, oy: 0 },     // West
+          { dx: 0, dy: -1, ox: 0, oy: -TILE_HEIGHT / 4 },
+          { dx: 1, dy: 0,  ox: TILE_WIDTH / 4, oy: 0 },
+          { dx: 0, dy: 1,  ox: 0, oy: TILE_HEIGHT / 4 },
+          { dx: -1, dy: 0, ox: -TILE_WIDTH / 4, oy: 0 },
         ];
 
         for (const n of neighbors) {
@@ -494,7 +326,6 @@ export class IsometricMap {
           if (neighborType === tileType) continue;
 
           const neighborColor = TILE_PROPERTIES[neighborType].color;
-          // Draw a small blended ellipse at the edge toward the neighbor
           this.blendGraphics.fillStyle(neighborColor, 0.2);
           this.blendGraphics.fillEllipse(cx + n.ox, cy + n.oy, 14, 8);
         }

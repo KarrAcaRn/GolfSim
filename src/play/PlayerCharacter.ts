@@ -15,42 +15,9 @@ export class PlayerCharacter {
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
-    this.createTexture();
     this.sprite = scene.add.sprite(0, 0, 'player');
     this.sprite.setDepth(850);
     this.sprite.setVisible(false);
-  }
-
-  private createTexture(): void {
-    if (this.scene.textures.exists('player')) return;
-
-    const g = this.scene.add.graphics();
-
-    // Simple pixel art golfer (~12x16)
-    // Body
-    g.fillStyle(0x2255aa, 1); // blue shirt
-    g.fillRect(3, 6, 6, 6);  // torso
-
-    // Pants
-    g.fillStyle(0x443322, 1); // brown pants
-    g.fillRect(3, 12, 3, 4); // left leg
-    g.fillRect(6, 12, 3, 4); // right leg
-
-    // Head
-    g.fillStyle(0xffcc99, 1); // skin
-    g.fillRect(4, 1, 4, 5);  // head
-
-    // Hat
-    g.fillStyle(0xffffff, 1);
-    g.fillRect(3, 0, 6, 2);  // hat brim
-
-    // Arms
-    g.fillStyle(0xffcc99, 1);
-    g.fillRect(1, 7, 2, 4);  // left arm
-    g.fillRect(9, 7, 2, 4);  // right arm
-
-    g.generateTexture('player', 12, 16);
-    g.destroy();
   }
 
   walkTo(worldX: number, worldY: number): void {
