@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { t, setLocale, getLocale, getAvailableLocales } from '../i18n/i18n';
 import { Button } from '../ui/Button';
+import { CourseStorage } from '../storage/CourseStorage';
 
 export class MainMenuScene extends Phaser.Scene {
   private buttons: Button[] = [];
@@ -58,8 +59,12 @@ export class MainMenuScene extends Phaser.Scene {
       bgColor: 0x444444,
       hoverColor: 0x666666,
       onClick: () => {
-        // Will be implemented with save/load system
-        this.scene.start('Editor');
+        const courses = CourseStorage.listSavedCourses();
+        if (courses.length === 0) return;
+        const courseData = CourseStorage.load(courses[0]);
+        if (courseData) {
+          this.scene.start('Editor', { courseData });
+        }
       },
     });
     this.buttons.push(loadBtn);
