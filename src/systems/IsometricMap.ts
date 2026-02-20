@@ -11,13 +11,11 @@ export class IsometricMap {
   private tiles: TileType[][];
   private container: Phaser.GameObjects.Container;
   private gridVisible: boolean = true;
-  private elevations: number[][];
-  private tileSprites: Phaser.GameObjects.Image[][] = [];
+  private cornerElevations: number[][];
+  private terrainGraphics: Phaser.GameObjects.Graphics;
   private gridGraphics: Phaser.GameObjects.Graphics;
   private blendGraphics: Phaser.GameObjects.Graphics;
-  private cornerElevations: number[][];
   private _terrainDirty = false;
-  private _cornersDirty = false;
 
   constructor(scene: Phaser.Scene, width: number, height: number) {
     this.scene = scene;
@@ -31,44 +29,25 @@ export class IsometricMap {
       this.tiles[y] = new Array(width).fill(TileType.GRASS);
     }
 
-    // Initialize elevations
-    this.elevations = [];
-    for (let y = 0; y < height; y++) {
-      this.elevations[y] = new Array(width).fill(0);
-    }
-
-    // Initialize corner elevations (vertices grid is (width+1) x (height+1))
+    // Initialize corner elevations: (width+1) x (height+1) vertex grid
     this.cornerElevations = [];
     for (let j = 0; j <= height; j++) {
       this.cornerElevations[j] = new Array(width + 1).fill(0);
     }
 
-    // Create tile sprites (instead of terrainGraphics)
-    this.tileSprites = [];
-    for (let y = 0; y < height; y++) {
-      this.tileSprites[y] = [];
-      for (let x = 0; x < width; x++) {
-        const worldPos = tileToWorld(x, y);
-        const sprite = scene.add.image(
-          worldPos.x + this.getOffsetX(),
-          worldPos.y + this.getOffsetY(),
-          `tile_${this.tiles[y][x]}`
-        );
-        sprite.setOrigin(0.5, 0.5);
-        sprite.setDepth(y + x * 0.01);
-        this.container.add(sprite);
-        this.tileSprites[y][x] = sprite;
-      }
-    }
+    // Terrain fill graphics (polygon-based rendering)
+    this.terrainGraphics = scene.add.graphics();
+    this.terrainGraphics.setDepth(0);
+    this.container.add(this.terrainGraphics);
 
     // Blend overlay graphics
     this.blendGraphics = scene.add.graphics();
-    this.blendGraphics.setDepth(1); // just above tiles
+    this.blendGraphics.setDepth(1);
     this.container.add(this.blendGraphics);
 
-    // Grid overlay graphics (separate from tiles)
+    // Grid overlay graphics
     this.gridGraphics = scene.add.graphics();
-    this.gridGraphics.setDepth(2); // above tiles and blends
+    this.gridGraphics.setDepth(2);
     this.container.add(this.gridGraphics);
 
     this.renderAllTiles();
@@ -79,115 +58,95 @@ export class IsometricMap {
     });
   }
 
+  // === Corner Elevation Methods ===
 
-  // === Elevation Methods ===
-
-  getElevationAt(tileX: number, tileY: number): number {
-    if (!this.isInBounds(tileX, tileY)) return 0;
-    return this.elevations[tileY][tileX];
+  getCornerElevation(cx: number, cy: number): number {
+    if (cx < 0 || cx > this.width || cy < 0 || cy > this.height) return 0;
+    return this.cornerElevations[cy][cx];
   }
 
-  setElevationAt(tileX: number, tileY: number, elevation: number): void {
-    if (!this.isInBounds(tileX, tileY)) return;
+  setCornerElevation(cx: number, cy: number, elevation: number): void {
+    if (cx < 0 || cx > this.width || cy < 0 || cy > this.height) return;
     const clamped = Math.max(MIN_ELEVATION, Math.min(MAX_ELEVATION, elevation));
-    this.elevations[tileY][tileX] = clamped;
-
-    this._cornersDirty = true;
+    this.cornerElevations[cy][cx] = clamped;
     this._terrainDirty = true;
   }
 
-  getSlope(tileX: number, tileY: number): { slopeX: number; slopeY: number } {
-    const eE = this.getElevationAt(tileX + 1, tileY);
-    const eW = this.getElevationAt(tileX - 1, tileY);
-    const eS = this.getElevationAt(tileX, tileY + 1);
-    const eN = this.getElevationAt(tileX, tileY - 1);
+  /** Average elevation of a tile's 4 corners (convenience for physics/ball positioning) */
+  getElevationAt(tileX: number, tileY: number): number {
+    if (!this.isInBounds(tileX, tileY)) return 0;
+    return (
+      this.cornerElevations[tileY][tileX] +
+      this.cornerElevations[tileY][tileX + 1] +
+      this.cornerElevations[tileY + 1][tileX + 1] +
+      this.cornerElevations[tileY + 1][tileX]
+    ) / 4;
+  }
 
-    // Tile-space gradient (positive = higher to east/south)
-    const gradX = (eE - eW) / 2;
-    const gradY = (eS - eN) / 2;
+  /** Slope computed directly from tile's corner elevations */
+  getSlope(tileX: number, tileY: number): { slopeX: number; slopeY: number } {
+    if (!this.isInBounds(tileX, tileY)) return { slopeX: 0, slopeY: 0 };
+
+    const n = this.cornerElevations[tileY][tileX];         // N (top)
+    const e = this.cornerElevations[tileY][tileX + 1];     // E (right)
+    const s = this.cornerElevations[tileY + 1][tileX + 1]; // S (bottom)
+    const w = this.cornerElevations[tileY + 1][tileX];     // W (left)
+
+    // Tile-space gradient
+    const gradX = ((e + s) - (n + w)) / 2;
+    const gradY = ((w + s) - (n + e)) / 2;
 
     // Convert to world-space (isometric projection)
-    // In iso: worldX ~ (tileX - tileY), worldY ~ (tileX + tileY)
-    // Slope pushes ball "downhill" = toward lower elevation
     const worldSlopeX = (gradX - gradY);
     const worldSlopeY = (gradX + gradY) * 0.5;
 
     return { slopeX: worldSlopeX, slopeY: worldSlopeY };
   }
 
-  // === Corner Elevation Computation ===
+  // === Vertex World Position ===
 
-  private computeCornerElevations(): void {
-    for (let j = 0; j <= this.height; j++) {
-      for (let i = 0; i <= this.width; i++) {
-        // Vertex V(i,j) is shared by up to 4 tiles:
-        // (i,j), (i-1,j), (i,j-1), (i-1,j-1)
-        let sum = 0;
-        let count = 0;
-
-        const adjacentTiles = [
-          { x: i, y: j },
-          { x: i - 1, y: j },
-          { x: i, y: j - 1 },
-          { x: i - 1, y: j - 1 }
-        ];
-
-        for (const tile of adjacentTiles) {
-          if (this.isInBounds(tile.x, tile.y)) {
-            sum += this.elevations[tile.y][tile.x];
-            count++;
-          }
-        }
-
-        this.cornerElevations[j][i] = count > 0 ? sum / count : 0;
-      }
-    }
-  }
-
-  // === World Position Methods ===
-
-  getTileCorners(x: number, y: number): { n: { x: number; y: number }; e: { x: number; y: number }; s: { x: number; y: number }; w: { x: number; y: number } } {
-    const sprite = this.tileSprites[y][x];
-    const cx = sprite.x;
-    const cy = sprite.y;
-    const hw = TILE_WIDTH / 2;
-    const hh = TILE_HEIGHT / 2;
-
+  /** Get the screen position of a vertex (corner point) */
+  private getVertexScreenPos(cx: number, cy: number): { x: number; y: number } {
+    const worldPos = tileToWorld(cx, cy);
+    const elev = this.getCornerElevation(cx, cy);
     return {
-      n: { x: cx, y: cy - hh },
-      e: { x: cx + hw, y: cy },
-      s: { x: cx, y: cy + hh },
-      w: { x: cx - hw, y: cy },
+      x: worldPos.x + this.getOffsetX(),
+      y: worldPos.y + this.getOffsetY() - TILE_HEIGHT / 2 - elev * ELEVATION_STEP,
     };
   }
 
-  // === Terrain Rendering ===
+  /** Get the 4 corner screen positions of a tile (N, E, S, W) */
+  getTileCorners(x: number, y: number): { n: { x: number; y: number }; e: { x: number; y: number }; s: { x: number; y: number }; w: { x: number; y: number } } {
+    return {
+      n: this.getVertexScreenPos(x, y),
+      e: this.getVertexScreenPos(x + 1, y),
+      s: this.getVertexScreenPos(x + 1, y + 1),
+      w: this.getVertexScreenPos(x, y + 1),
+    };
+  }
+
+  // === Terrain Rendering (polygon-based) ===
 
   private renderTerrain(): void {
+    this.terrainGraphics.clear();
+
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
-        const sprite = this.tileSprites[y][x];
-        sprite.setTexture(`tile_${this.tiles[y][x]}`);
+        const tileType = this.tiles[y][x];
+        const color = TILE_PROPERTIES[tileType].color;
+        const corners = this.getTileCorners(x, y);
 
-        const worldPos = tileToWorld(x, y);
-        const avgElev = this.getAverageElevation(x, y);
-        sprite.setPosition(
-          worldPos.x + this.getOffsetX(),
-          worldPos.y + this.getOffsetY() - avgElev * ELEVATION_STEP
-        );
-        sprite.setDepth(y + x * 0.01);
+        this.terrainGraphics.fillStyle(color, 1);
+        this.terrainGraphics.beginPath();
+        this.terrainGraphics.moveTo(corners.n.x, corners.n.y);
+        this.terrainGraphics.lineTo(corners.e.x, corners.e.y);
+        this.terrainGraphics.lineTo(corners.s.x, corners.s.y);
+        this.terrainGraphics.lineTo(corners.w.x, corners.w.y);
+        this.terrainGraphics.closePath();
+        this.terrainGraphics.fillPath();
       }
     }
     this.renderGrid();
-  }
-
-  private getAverageElevation(x: number, y: number): number {
-    return (
-      this.cornerElevations[y][x] +
-      this.cornerElevations[y][x + 1] +
-      this.cornerElevations[y + 1][x + 1] +
-      this.cornerElevations[y + 1][x]
-    ) / 4;
   }
 
   private renderGrid(): void {
@@ -197,17 +156,13 @@ export class IsometricMap {
     this.gridGraphics.lineStyle(1, 0x000000, 0.3);
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
-        const sprite = this.tileSprites[y][x];
-        const cx = sprite.x;
-        const cy = sprite.y;
-        const hw = TILE_WIDTH / 2;
-        const hh = TILE_HEIGHT / 2;
+        const corners = this.getTileCorners(x, y);
 
         this.gridGraphics.beginPath();
-        this.gridGraphics.moveTo(cx, cy - hh);
-        this.gridGraphics.lineTo(cx + hw, cy);
-        this.gridGraphics.lineTo(cx, cy + hh);
-        this.gridGraphics.lineTo(cx - hw, cy);
+        this.gridGraphics.moveTo(corners.n.x, corners.n.y);
+        this.gridGraphics.lineTo(corners.e.x, corners.e.y);
+        this.gridGraphics.lineTo(corners.s.x, corners.s.y);
+        this.gridGraphics.lineTo(corners.w.x, corners.w.y);
         this.gridGraphics.closePath();
         this.gridGraphics.strokePath();
       }
@@ -215,22 +170,13 @@ export class IsometricMap {
   }
 
   private flushIfDirty(): void {
-    if (!this._cornersDirty && !this._terrainDirty) return;
-
-    if (this._cornersDirty) {
-      this.computeCornerElevations();
-      this._cornersDirty = false;
-    }
-
-    if (this._terrainDirty) {
-      this.renderTerrain();
-      this.updateBlendOverlays();
-      this._terrainDirty = false;
-    }
+    if (!this._terrainDirty) return;
+    this.renderTerrain();
+    this.updateBlendOverlays();
+    this._terrainDirty = false;
   }
 
   private renderAllTiles(): void {
-    this.computeCornerElevations();
     this.renderTerrain();
     this.updateBlendOverlays();
   }
@@ -238,10 +184,7 @@ export class IsometricMap {
   setTileAt(tileX: number, tileY: number, type: TileType): void {
     if (!this.isInBounds(tileX, tileY)) return;
     if (this.tiles[tileY][tileX] === type) return;
-
     this.tiles[tileY][tileX] = type;
-    // Immediate sprite texture update for editor responsiveness
-    this.tileSprites[tileY][tileX].setTexture(`tile_${type}`);
     this._terrainDirty = true;
   }
 
@@ -252,6 +195,10 @@ export class IsometricMap {
 
   isInBounds(tileX: number, tileY: number): boolean {
     return tileX >= 0 && tileX < this.width && tileY >= 0 && tileY < this.height;
+  }
+
+  isCornerInBounds(cx: number, cy: number): boolean {
+    return cx >= 0 && cx <= this.width && cy >= 0 && cy <= this.height;
   }
 
   getWidth(): number {
@@ -294,6 +241,33 @@ export class IsometricMap {
     };
   }
 
+  /** Find the nearest vertex (corner point) to a world position */
+  worldToNearestVertex(worldX: number, worldY: number): { cx: number; cy: number } {
+    // Get approximate tile position
+    const { tileX, tileY } = this.worldToTile(worldX, worldY);
+
+    // Check all vertices around this tile (and neighboring tiles)
+    let bestCx = 0;
+    let bestCy = 0;
+    let bestDist = Infinity;
+
+    for (let cy = Math.max(0, tileY); cy <= Math.min(this.height, tileY + 2); cy++) {
+      for (let cx = Math.max(0, tileX); cx <= Math.min(this.width, tileX + 2); cx++) {
+        const pos = this.getVertexScreenPos(cx, cy);
+        const dx = worldX - pos.x;
+        const dy = worldY - pos.y;
+        const dist = dx * dx + dy * dy;
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestCx = cx;
+          bestCy = cy;
+        }
+      }
+    }
+
+    return { cx: bestCx, cy: bestCy };
+  }
+
   setGridVisible(visible: boolean): void {
     if (this.gridVisible === visible) return;
     this.gridVisible = visible;
@@ -306,9 +280,9 @@ export class IsometricMap {
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
         const tileType = this.tiles[y][x];
-        const sprite = this.tileSprites[y][x];
-        const cx = sprite.x;
-        const cy = sprite.y;
+        const corners = this.getTileCorners(x, y);
+        const cx = (corners.n.x + corners.e.x + corners.s.x + corners.w.x) / 4;
+        const cy = (corners.n.y + corners.e.y + corners.s.y + corners.w.y) / 4;
 
         const neighbors = [
           { dx: 0, dy: -1, ox: 0, oy: -TILE_HEIGHT / 4 },
@@ -340,25 +314,50 @@ export class IsometricMap {
       }
     }
 
-    // Load elevations (backwards compatible - default to 0 if not present)
-    if (data.elevations) {
-      for (let y = 0; y < Math.min(data.height, this.height); y++) {
-        for (let x = 0; x < Math.min(data.width, this.width); x++) {
-          this.elevations[y][x] = data.elevations[y][x] ?? 0;
+    if (data.cornerElevations) {
+      // New format: load corner elevations directly
+      for (let j = 0; j <= Math.min(data.height, this.height); j++) {
+        for (let i = 0; i <= Math.min(data.width, this.width); i++) {
+          this.cornerElevations[j][i] = data.cornerElevations[j]?.[i] ?? 0;
         }
       }
+    } else if (data.elevations) {
+      // Legacy migration: convert tile-centered elevations to corner elevations
+      this.migrateFromTileElevations(data.elevations, data.width, data.height);
     }
 
-    this.computeCornerElevations();
     this.renderTerrain();
     this.updateBlendOverlays();
   }
 
-  exportData(): { width: number; height: number; tiles: TileType[][]; elevations: number[][] } {
-    // Deep copy tiles and elevations
+  /** Convert old tile-centered elevations to corner-based elevations */
+  private migrateFromTileElevations(elevations: number[][], dataWidth: number, dataHeight: number): void {
+    for (let j = 0; j <= this.height; j++) {
+      for (let i = 0; i <= this.width; i++) {
+        // Average of up to 4 adjacent tiles
+        let sum = 0;
+        let count = 0;
+        const adjacentTiles = [
+          { x: i, y: j },
+          { x: i - 1, y: j },
+          { x: i, y: j - 1 },
+          { x: i - 1, y: j - 1 },
+        ];
+        for (const tile of adjacentTiles) {
+          if (tile.x >= 0 && tile.x < dataWidth && tile.y >= 0 && tile.y < dataHeight) {
+            sum += elevations[tile.y]?.[tile.x] ?? 0;
+            count++;
+          }
+        }
+        this.cornerElevations[j][i] = count > 0 ? sum / count : 0;
+      }
+    }
+  }
+
+  exportData(): { width: number; height: number; tiles: TileType[][]; cornerElevations: number[][] } {
     const tiles = this.tiles.map(row => [...row]);
-    const elevations = this.elevations.map(row => [...row]);
-    return { width: this.width, height: this.height, tiles, elevations };
+    const cornerElevations = this.cornerElevations.map(row => [...row]);
+    return { width: this.width, height: this.height, tiles, cornerElevations };
   }
 
   getContainer(): Phaser.GameObjects.Container {
@@ -374,7 +373,7 @@ export class IsometricMap {
 
     const minX = Math.min(topLeft.x, bottomLeft.x) - TILE_WIDTH;
     const maxX = Math.max(topRight.x, bottomRight.x) + TILE_WIDTH;
-    const minY = Math.min(topLeft.y, topRight.y) - TILE_HEIGHT;
+    const minY = Math.min(topLeft.y, topRight.y) - TILE_HEIGHT - MAX_ELEVATION * ELEVATION_STEP;
     const maxY = Math.max(bottomLeft.y, bottomRight.y) + TILE_HEIGHT;
 
     return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };

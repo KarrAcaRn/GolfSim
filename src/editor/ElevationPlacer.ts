@@ -7,7 +7,7 @@ export class ElevationPlacer {
   private isoMap: IsometricMap;
   private state: EditorState;
   private hoverGraphics: Phaser.GameObjects.Graphics;
-  private lastPaintedTile: string | null = null;
+  private lastPaintedVertex: string | null = null;
 
   constructor(scene: Phaser.Scene, isoMap: IsometricMap, state: EditorState) {
     this.scene = scene;
@@ -47,71 +47,103 @@ export class ElevationPlacer {
   }
 
   private onPointerUp(): void {
-    this.lastPaintedTile = null;
+    this.lastPaintedVertex = null;
   }
 
   private modifyAt(worldX: number, worldY: number): void {
-    const { tileX, tileY } = this.isoMap.worldToTile(worldX, worldY);
-    if (!this.isoMap.isInBounds(tileX, tileY)) return;
+    const { cx, cy } = this.isoMap.worldToNearestVertex(worldX, worldY);
+    if (!this.isoMap.isCornerInBounds(cx, cy)) return;
 
-    const key = `${tileX},${tileY}`;
-    if (this.lastPaintedTile === key) return;
-    this.lastPaintedTile = key;
+    const key = `${cx},${cy}`;
+    if (this.lastPaintedVertex === key) return;
+    this.lastPaintedVertex = key;
 
-    const oldElevation = this.isoMap.getElevationAt(tileX, tileY);
+    const oldElevation = this.isoMap.getCornerElevation(cx, cy);
     const delta = this.state.currentTool === EditorTool.RAISE_TERRAIN ? 1 : -1;
     const newElevation = oldElevation + delta;
 
     if (newElevation === oldElevation) return; // clamped, no change
 
-    this.isoMap.setElevationAt(tileX, tileY, newElevation);
+    this.isoMap.setCornerElevation(cx, cy, newElevation);
 
     // Verify the elevation actually changed (could be clamped)
-    const actualElevation = this.isoMap.getElevationAt(tileX, tileY);
+    const actualElevation = this.isoMap.getCornerElevation(cx, cy);
     if (actualElevation === oldElevation) return;
 
     this.state.pushAction({
       type: 'elevation_change',
-      data: { tileX, tileY, oldElevation, newElevation: actualElevation },
+      data: { cornerX: cx, cornerY: cy, oldElevation, newElevation: actualElevation },
     });
   }
 
   private updateHover(worldX: number, worldY: number): void {
     this.hoverGraphics.clear();
-    const { tileX, tileY } = this.isoMap.worldToTile(worldX, worldY);
-    if (!this.isoMap.isInBounds(tileX, tileY)) return;
+    const { cx, cy } = this.isoMap.worldToNearestVertex(worldX, worldY);
+    if (!this.isoMap.isCornerInBounds(cx, cy)) return;
 
-    const corners = this.isoMap.getTileCorners(tileX, tileY);
+    // Get vertex screen position by finding an adjacent tile and picking the right corner
+    const vertexPos = this.getVertexScreenPos(cx, cy);
+    if (!vertexPos) return;
 
-    // Diamond outline
     const isRaise = this.state.currentTool === EditorTool.RAISE_TERRAIN;
     const color = isRaise ? 0x00ff00 : 0xff6600;
+
+    // Draw a circle at the vertex position
     this.hoverGraphics.lineStyle(2, color, 0.8);
-    this.hoverGraphics.beginPath();
-    this.hoverGraphics.moveTo(corners.n.x, corners.n.y);
-    this.hoverGraphics.lineTo(corners.e.x, corners.e.y);
-    this.hoverGraphics.lineTo(corners.s.x, corners.s.y);
-    this.hoverGraphics.lineTo(corners.w.x, corners.w.y);
-    this.hoverGraphics.closePath();
-    this.hoverGraphics.strokePath();
+    this.hoverGraphics.fillStyle(color, 0.3);
+    this.hoverGraphics.fillCircle(vertexPos.x, vertexPos.y, 6);
+    this.hoverGraphics.strokeCircle(vertexPos.x, vertexPos.y, 6);
 
-    // Arrow indicator at tile center
-    const centerX = (corners.n.x + corners.e.x + corners.s.x + corners.w.x) / 4;
-    const centerY = (corners.n.y + corners.e.y + corners.s.y + corners.w.y) / 4;
-
+    // Draw arrow indicator at vertex position
     if (isRaise) {
       // Up arrow
       this.hoverGraphics.lineStyle(2, color, 0.9);
-      this.hoverGraphics.lineBetween(centerX, centerY - 2, centerX, centerY - 10);
-      this.hoverGraphics.lineBetween(centerX - 4, centerY - 6, centerX, centerY - 10);
-      this.hoverGraphics.lineBetween(centerX + 4, centerY - 6, centerX, centerY - 10);
+      this.hoverGraphics.lineBetween(vertexPos.x, vertexPos.y - 8, vertexPos.x, vertexPos.y - 16);
+      this.hoverGraphics.lineBetween(vertexPos.x - 4, vertexPos.y - 12, vertexPos.x, vertexPos.y - 16);
+      this.hoverGraphics.lineBetween(vertexPos.x + 4, vertexPos.y - 12, vertexPos.x, vertexPos.y - 16);
     } else {
       // Down arrow
       this.hoverGraphics.lineStyle(2, color, 0.9);
-      this.hoverGraphics.lineBetween(centerX, centerY + 2, centerX, centerY + 10);
-      this.hoverGraphics.lineBetween(centerX - 4, centerY + 6, centerX, centerY + 10);
-      this.hoverGraphics.lineBetween(centerX + 4, centerY + 6, centerX, centerY + 10);
+      this.hoverGraphics.lineBetween(vertexPos.x, vertexPos.y + 8, vertexPos.x, vertexPos.y + 16);
+      this.hoverGraphics.lineBetween(vertexPos.x - 4, vertexPos.y + 12, vertexPos.x, vertexPos.y + 16);
+      this.hoverGraphics.lineBetween(vertexPos.x + 4, vertexPos.y + 12, vertexPos.x, vertexPos.y + 16);
     }
+  }
+
+  /**
+   * Get screen position of a vertex by finding an adjacent tile and picking the right corner.
+   * Vertex (cx, cy) can be:
+   * - N corner of tile (cx, cy) if in bounds
+   * - E corner of tile (cx-1, cy) if in bounds
+   * - W corner of tile (cx, cy-1) if in bounds
+   * - S corner of tile (cx-1, cy-1) if in bounds
+   */
+  private getVertexScreenPos(cx: number, cy: number): { x: number; y: number } | null {
+    // Try tile (cx, cy) → N corner
+    if (this.isoMap.isInBounds(cx, cy)) {
+      const corners = this.isoMap.getTileCorners(cx, cy);
+      return { x: corners.n.x, y: corners.n.y };
+    }
+
+    // Try tile (cx-1, cy) → E corner
+    if (this.isoMap.isInBounds(cx - 1, cy)) {
+      const corners = this.isoMap.getTileCorners(cx - 1, cy);
+      return { x: corners.e.x, y: corners.e.y };
+    }
+
+    // Try tile (cx, cy-1) → W corner
+    if (this.isoMap.isInBounds(cx, cy - 1)) {
+      const corners = this.isoMap.getTileCorners(cx, cy - 1);
+      return { x: corners.w.x, y: corners.w.y };
+    }
+
+    // Try tile (cx-1, cy-1) → S corner
+    if (this.isoMap.isInBounds(cx - 1, cy - 1)) {
+      const corners = this.isoMap.getTileCorners(cx - 1, cy - 1);
+      return { x: corners.s.x, y: corners.s.y };
+    }
+
+    return null;
   }
 
   destroy(): void {

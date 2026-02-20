@@ -25,7 +25,8 @@ export interface CourseData {
   width: number;
   height: number;
   tiles: TileType[][];
-  elevations?: number[][];
+  elevations?: number[][];  // legacy: tile-centered elevations (kept for backwards compatibility)
+  cornerElevations?: number[][];  // new: corner/vertex-based elevations (height+1 x width+1)
   holes: HoleData[];
   objects: PlacedObject[];
   metadata: CourseMetadata;
@@ -33,17 +34,19 @@ export interface CourseData {
 
 export function createEmptyCourse(width: number, height: number): CourseData {
   const tiles: TileType[][] = [];
-  const elevations: number[][] = [];
+  const cornerElevations: number[][] = [];
+  for (let y = 0; y <= height; y++) {
+    cornerElevations[y] = new Array(width + 1).fill(0);
+  }
   for (let y = 0; y < height; y++) {
     tiles[y] = new Array(width).fill(TileType.GRASS);
-    elevations[y] = new Array(width).fill(0);
   }
   return {
     name: 'New Course',
     width,
     height,
     tiles,
-    elevations,
+    cornerElevations,
     holes: [],
     objects: [],
     metadata: {

@@ -22,8 +22,8 @@ interface TileChangeData {
 }
 
 interface ElevationChangeData {
-  tileX: number;
-  tileY: number;
+  cornerX: number;
+  cornerY: number;
   oldElevation: number;
   newElevation: number;
 }
@@ -51,7 +51,7 @@ export class EditorState {
     }
     if (action.type === 'elevation_change') {
       const data = action.data as ElevationChangeData;
-      map.setElevationAt(data.tileX, data.tileY, data.oldElevation);
+      map.setCornerElevation(data.cornerX, data.cornerY, data.oldElevation);
     }
     this.redoStack.push(action);
   }
@@ -66,7 +66,7 @@ export class EditorState {
     }
     if (action.type === 'elevation_change') {
       const data = action.data as ElevationChangeData;
-      map.setElevationAt(data.tileX, data.tileY, data.newElevation);
+      map.setCornerElevation(data.cornerX, data.cornerY, data.newElevation);
     }
     this.undoStack.push(action);
   }

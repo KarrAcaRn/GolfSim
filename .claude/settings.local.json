@@ -24,7 +24,10 @@
       "Bash(npm run build:*)",
       "Bash(npx vite:*)",
       "Bash(scripts/commit-and-push.sh:*)",
-      "Bash(file:*)"
+      "Bash(file:*)",
+      "Bash(/srv/projects/GolfSim/src/models/CourseData.ts:*)",
+      "Bash(/srv/projects/GolfSim/src/editor/EditorState.ts:*)",
+      "Bash(/srv/projects/GolfSim/src/editor/ElevationPlacer.ts:*)"
     ]
   }
 }
