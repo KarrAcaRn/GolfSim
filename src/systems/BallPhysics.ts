@@ -92,8 +92,9 @@ export class BallPhysics {
     this.groundVy = Math.sin(angle) * horizontalPower;
 
     this.z = 0;
-    this.groundX = this.ball.x;
-    this.groundY = this.ball.y;
+    // groundX/groundY already holds the correct flat-plane position
+    // (set by createBall or moveBallTo). Do NOT read from ball.x/y
+    // since the sprite position includes the elevation visual offset.
 
     if (this.vz > MIN_BOUNCE_VZ) {
       this.isAirborne = true;
