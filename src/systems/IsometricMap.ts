@@ -92,13 +92,13 @@ export class IsometricMap {
     const s = this.cornerElevations[tileY + 1][tileX + 1]; // S (bottom)
     const w = this.cornerElevations[tileY + 1][tileX];     // W (left)
 
-    // Tile-space gradient
+    // Tile-space gradient (positive = uphill)
     const gradX = ((e + s) - (n + w)) / 2;
     const gradY = ((w + s) - (n + e)) / 2;
 
-    // Convert to world-space (isometric projection)
-    const worldSlopeX = (gradX - gradY);
-    const worldSlopeY = (gradX + gradY) * 0.5;
+    // Convert to world-space and negate so slope points downhill
+    const worldSlopeX = -(gradX - gradY);
+    const worldSlopeY = -(gradX + gradY) * 0.5;
 
     return { slopeX: worldSlopeX, slopeY: worldSlopeY };
   }
