@@ -51,5 +51,5 @@
   "editor.buildMenu.raise": "Raise (+)",
   "editor.buildMenu.lower": "Lower (-)",
   "editor.buildMenu.tools": "Tools",
-  "editor.optionsMenu.title": "Options (O)"
+  "editor.optionsMenu.title": "Options"
 }

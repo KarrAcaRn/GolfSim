@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import { Button } from '../ui/Button';
 import { BuildMenu } from '../ui/BuildMenu';
-import { OptionsMenu } from '../ui/OptionsMenu';
 import { EditorTool } from '../editor/EditorState';
 import { t } from '../i18n/i18n';
 import { EventBus } from '../utils/EventBus';
@@ -19,7 +18,6 @@ export class UIScene extends Phaser.Scene {
   private buttons: Button[] = [];
   private infoText!: Phaser.GameObjects.Text;
   private buildMenu?: BuildMenu;
-  private optionsMenu?: OptionsMenu;
 
   constructor() {
     super({ key: 'UI' });
@@ -43,10 +41,12 @@ export class UIScene extends Phaser.Scene {
       this.buildMenu.destroy();
       this.buildMenu = undefined;
     }
-    if (this.optionsMenu) {
-      this.optionsMenu.destroy();
-      this.optionsMenu = undefined;
-    }
+  }
+
+  private openPauseMenu(): void {
+    const callingScene = this.mode === 'editor' ? 'Editor' : 'Play';
+    this.scene.pause(callingScene);
+    this.scene.launch('Pause', { callingScene });
   }
 
   private createEditorToolbar(): void {
@@ -54,7 +54,7 @@ export class UIScene extends Phaser.Scene {
     const x = 4;
     let y = 4;
 
-    // Background panel (smaller now)
+    // Background panel
     this.add.rectangle(0, 0, TOOLBAR_WIDTH + 8, height, 0x222222, 0.85)
       .setOrigin(0, 0)
       .setScrollFactor(0)
@@ -76,8 +76,8 @@ export class UIScene extends Phaser.Scene {
     this.buttons.push(buildBtn);
     y += BUTTON_HEIGHT + BUTTON_MARGIN + 4;
 
-    // Options Menu button
-    const optionsBtn = new Button(this, {
+    // Menu button (opens Pause/Options menu)
+    const menuBtn = new Button(this, {
       x,
       y,
       width: TOOLBAR_WIDTH,
@@ -86,10 +86,10 @@ export class UIScene extends Phaser.Scene {
       fontSize: '12px',
       bgColor: 0x2a2a44,
       hoverColor: 0x44446a,
-      onClick: () => this.optionsMenu?.toggle(),
+      onClick: () => this.openPauseMenu(),
     });
-    optionsBtn.setDepth(101);
-    this.buttons.push(optionsBtn);
+    menuBtn.setDepth(101);
+    this.buttons.push(menuBtn);
     y += BUTTON_HEIGHT + BUTTON_MARGIN + 4;
 
     y += 6;
@@ -123,15 +123,9 @@ export class UIScene extends Phaser.Scene {
     // Build menu (initially hidden, toggled with B)
     this.buildMenu = new BuildMenu(this);
 
-    // Options menu (initially hidden, toggled with O)
-    this.optionsMenu = new OptionsMenu(this);
-
     // Keyboard shortcuts
     this.input.keyboard?.on('keydown-B', () => {
       this.buildMenu?.toggle();
-    });
-    this.input.keyboard?.on('keydown-O', () => {
-      this.optionsMenu?.toggle();
     });
   }
 
