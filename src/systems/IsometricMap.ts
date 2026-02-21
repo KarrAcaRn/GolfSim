@@ -274,37 +274,66 @@ export class IsometricMap {
     this._terrainDirty = true;
   }
 
+  /** Dual-grid terrain transitions: draw a mesh diamond at each vertex
+   *  where different terrain types meet, subdivided into 4 quadrants
+   *  colored by the surrounding tiles. */
   updateBlendOverlays(): void {
     this.blendGraphics.clear();
 
-    for (let y = 0; y < this.height; y++) {
-      for (let x = 0; x < this.width; x++) {
-        const tileType = this.tiles[y][x];
-        const corners = this.getTileCorners(x, y);
-        const cx = (corners.n.x + corners.e.x + corners.s.x + corners.w.x) / 4;
-        const cy = (corners.n.y + corners.e.y + corners.s.y + corners.w.y) / 4;
+    const hw = TILE_WIDTH / 2;  // 32
+    const hh = TILE_HEIGHT / 2; // 16
 
-        const neighbors = [
-          { dx: 0, dy: -1, ox: 0, oy: -TILE_HEIGHT / 4 },
-          { dx: 1, dy: 0,  ox: TILE_WIDTH / 4, oy: 0 },
-          { dx: 0, dy: 1,  ox: 0, oy: TILE_HEIGHT / 4 },
-          { dx: -1, dy: 0, ox: -TILE_WIDTH / 4, oy: 0 },
-        ];
+    // Iterate internal vertices (where 4 tiles share a corner)
+    for (let j = 1; j < this.height; j++) {
+      for (let i = 1; i < this.width; i++) {
+        // 4 surrounding tiles
+        const tN = this.tiles[j - 1][i - 1];
+        const tE = this.tiles[j - 1][i];
+        const tS = this.tiles[j][i];
+        const tW = this.tiles[j][i - 1];
 
-        for (const n of neighbors) {
-          const nx = x + n.dx;
-          const ny = y + n.dy;
-          if (!this.isInBounds(nx, ny)) continue;
+        // Skip if all same terrain — base tiles already cover this
+        if (tN === tE && tE === tS && tS === tW) continue;
 
-          const neighborType = this.tiles[ny][nx];
-          if (neighborType === tileType) continue;
+        // Vertex screen position (center of mesh diamond)
+        const c = this.getVertexScreenPos(i, j);
 
-          const neighborColor = TILE_PROPERTIES[neighborType].color;
-          this.blendGraphics.fillStyle(neighborColor, 0.2);
-          this.blendGraphics.fillEllipse(cx + n.ox, cy + n.oy, 14, 8);
-        }
+        // Diamond tips
+        const n = { x: c.x, y: c.y - hh };
+        const e = { x: c.x + hw, y: c.y };
+        const s = { x: c.x, y: c.y + hh };
+        const w = { x: c.x - hw, y: c.y };
+
+        // Edge midpoints (divide diamond into 4 quadrants)
+        const mn = { x: c.x + hw / 2, y: c.y - hh / 2 };
+        const me = { x: c.x + hw / 2, y: c.y + hh / 2 };
+        const ms = { x: c.x - hw / 2, y: c.y + hh / 2 };
+        const mw = { x: c.x - hw / 2, y: c.y - hh / 2 };
+
+        // Draw 4 quadrants, each in its tile's terrain color
+        this.fillQuad(mw, n, mn, c, TILE_PROPERTIES[tN].color);
+        this.fillQuad(mn, e, me, c, TILE_PROPERTIES[tE].color);
+        this.fillQuad(c, me, s, ms, TILE_PROPERTIES[tS].color);
+        this.fillQuad(c, ms, w, mw, TILE_PROPERTIES[tW].color);
       }
     }
+  }
+
+  private fillQuad(
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+    c: { x: number; y: number },
+    d: { x: number; y: number },
+    color: number,
+  ): void {
+    this.blendGraphics.fillStyle(color, 1);
+    this.blendGraphics.beginPath();
+    this.blendGraphics.moveTo(a.x, a.y);
+    this.blendGraphics.lineTo(b.x, b.y);
+    this.blendGraphics.lineTo(c.x, c.y);
+    this.blendGraphics.lineTo(d.x, d.y);
+    this.blendGraphics.closePath();
+    this.blendGraphics.fillPath();
   }
 
   loadFromData(data: CourseData): void {
