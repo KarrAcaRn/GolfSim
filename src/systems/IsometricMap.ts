@@ -12,7 +12,7 @@ export class IsometricMap {
   private container: Phaser.GameObjects.Container;
   private gridVisible: boolean = true;
   private cornerElevations: number[][];
-  private tileSprites: Phaser.GameObjects.Image[][];
+  private terrainGraphics: Phaser.GameObjects.Graphics;
   private gridGraphics: Phaser.GameObjects.Graphics;
   private blendGraphics: Phaser.GameObjects.Graphics;
   private _terrainDirty = false;
@@ -35,23 +35,10 @@ export class IsometricMap {
       this.cornerElevations[j] = new Array(width + 1).fill(0);
     }
 
-    // Create tile sprites
-    this.tileSprites = [];
-    for (let y = 0; y < height; y++) {
-      this.tileSprites[y] = [];
-      for (let x = 0; x < width; x++) {
-        const worldPos = tileToWorld(x, y);
-        const sprite = scene.add.image(
-          worldPos.x + this.getOffsetX(),
-          worldPos.y + this.getOffsetY(),
-          `tile_${this.tiles[y][x]}`,
-        );
-        sprite.setOrigin(0.5, 0.5);
-        sprite.setDepth(y + x * 0.01);
-        this.container.add(sprite);
-        this.tileSprites[y][x] = sprite;
-      }
-    }
+    // Terrain fill graphics (elevation-aware polygons)
+    this.terrainGraphics = scene.add.graphics();
+    this.terrainGraphics.setDepth(0);
+    this.container.add(this.terrainGraphics);
 
     // Blend overlay graphics
     this.blendGraphics = scene.add.graphics();
@@ -109,9 +96,9 @@ export class IsometricMap {
     const gradX = ((e + s) - (n + w)) / 2;
     const gradY = ((w + s) - (n + e)) / 2;
 
-    // Convert to world-space and negate so slope points downhill
-    const worldSlopeX = -(gradX - gradY);
-    const worldSlopeY = -(gradX + gradY) * 0.5;
+    // Convert to world-space (iso 2:1: Y-axis is 2× compressed) and negate for downhill
+    const worldSlopeX = -(gradX - gradY) * 0.5;
+    const worldSlopeY = -(gradX + gradY);
 
     return { slopeX: worldSlopeX, slopeY: worldSlopeY };
   }
@@ -141,20 +128,20 @@ export class IsometricMap {
   // === Terrain Rendering (sprite-based) ===
 
   private renderTerrain(): void {
+    this.terrainGraphics.clear();
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
-        const sprite = this.tileSprites[y][x];
-        const tileType = this.tiles[y][x];
-        sprite.setTexture(`tile_${tileType}`);
+        const corners = this.getTileCorners(x, y);
+        const color = TILE_PROPERTIES[this.tiles[y][x]].color;
 
-        // Position at tile center, offset by average corner elevation
-        const worldPos = tileToWorld(x, y);
-        const avgElev = this.getElevationAt(x, y);
-        sprite.setPosition(
-          worldPos.x + this.getOffsetX(),
-          worldPos.y + this.getOffsetY() - avgElev * ELEVATION_STEP,
-        );
-        sprite.setDepth(y + x * 0.01);
+        this.terrainGraphics.fillStyle(color, 1);
+        this.terrainGraphics.beginPath();
+        this.terrainGraphics.moveTo(corners.n.x, corners.n.y);
+        this.terrainGraphics.lineTo(corners.e.x, corners.e.y);
+        this.terrainGraphics.lineTo(corners.s.x, corners.s.y);
+        this.terrainGraphics.lineTo(corners.w.x, corners.w.y);
+        this.terrainGraphics.closePath();
+        this.terrainGraphics.fillPath();
       }
     }
     this.renderGrid();

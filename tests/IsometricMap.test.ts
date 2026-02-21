@@ -19,18 +19,10 @@ function createMockScene(): any {
     fillEllipse: vi.fn().mockReturnThis(),
   };
 
-  const mockImage = {
-    setOrigin: vi.fn().mockReturnThis(),
-    setDepth: vi.fn().mockReturnThis(),
-    setTexture: vi.fn().mockReturnThis(),
-    setPosition: vi.fn().mockReturnThis(),
-  };
-
   return {
     add: {
       graphics: vi.fn(() => ({ ...mockGraphics })),
       container: vi.fn(() => ({ add: vi.fn() })),
-      image: vi.fn(() => ({ ...mockImage })),
     },
     events: {
       on: vi.fn(),
@@ -115,9 +107,11 @@ describe('IsometricMap', () => {
       map.setCornerElevation(5, 4, 2); // E
       map.setCornerElevation(5, 5, 2); // S
       const slope = map.getSlope(4, 4);
-      // gradX = ((E+S) - (N+W)) / 2 = ((2+2) - (0+0)) / 2 = 2
-      // worldSlopeX = -(gradX - gradY) = -(2 - 0) = -2
-      expect(slope.slopeX).toBe(-2);
+      // gradX = ((E+S) - (N+W)) / 2 = ((2+2) - (0+0)) / 2 = 2, gradY = 0
+      // worldSlopeX = -(gradX - gradY) * 0.5 = -(2-0)*0.5 = -1
+      // worldSlopeY = -(gradX + gradY) = -(2+0) = -2
+      expect(slope.slopeX).toBe(-1);
+      expect(slope.slopeY).toBe(-2);
     });
 
     it('returns zero net slope for uniformly raised tile', () => {

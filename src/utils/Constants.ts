@@ -20,5 +20,5 @@ export const MIN_ELEVATION = -2;
 export const MAX_ELEVATION = 5;
 
 // Slope physics
-export const SLOPE_BOUNCE_FACTOR = 30;
-export const SLOPE_ROLL_ACCEL = 60;
+export const SLOPE_BOUNCE_FACTOR = 15;
+export const SLOPE_ROLL_ACCEL = 30;
