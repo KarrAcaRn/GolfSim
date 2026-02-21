@@ -11,6 +11,7 @@ import { HOLE_SINK_RADIUS } from '../utils/Constants';
 import { ScoreCard } from '../ui/ScoreCard';
 import { ShotPanel } from '../ui/ShotPanel';
 import { t } from '../i18n/i18n';
+import { createMarkerSprite } from '../utils/UIUtils';
 
 export class PlayScene extends Phaser.Scene {
   private isoMap!: IsometricMap;
@@ -261,15 +262,11 @@ export class PlayScene extends Phaser.Scene {
 
     for (const hole of this.courseData.holes) {
       // Flag on green
-      const flagPos = this.isoMap.tileToWorld(hole.flagPosition.tileX, hole.flagPosition.tileY);
-      const flagSprite = this.add.image(flagPos.x, flagPos.y - 12, 'flag');
-      flagSprite.setDepth(500).setOrigin(0.5, 1);
+      const flagSprite = createMarkerSprite(this, this.isoMap, hole.flagPosition, 'flag');
       this.markerSprites.push(flagSprite);
 
       // Tee marker
-      const teePos = this.isoMap.tileToWorld(hole.teePosition.tileX, hole.teePosition.tileY);
-      const teeSprite = this.add.image(teePos.x, teePos.y - 6, 'tee_marker');
-      teeSprite.setDepth(500).setOrigin(0.5, 1);
+      const teeSprite = createMarkerSprite(this, this.isoMap, hole.teePosition, 'tee_marker');
       this.markerSprites.push(teeSprite);
     }
   }

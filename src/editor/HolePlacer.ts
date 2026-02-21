@@ -4,6 +4,7 @@ import { EditorState, EditorTool } from './EditorState';
 import { HoleData, TileCoord } from '../models/HoleData';
 import { TileType } from '../models/TileTypes';
 import { EventBus } from '../utils/EventBus';
+import { createMarkerSprite } from '../utils/UIUtils';
 
 export enum HolePlaceStep {
   PLACE_TEE = 'place_tee',
@@ -120,15 +121,11 @@ export class HolePlacer {
     // Render all placed holes as sprites
     for (const hole of this.holes) {
       // Tee marker sprite
-      const teePos = this.isoMap.tileToWorld(hole.teePosition.tileX, hole.teePosition.tileY);
-      const teeSprite = this.scene.add.image(teePos.x, teePos.y - 6, 'tee_marker');
-      teeSprite.setDepth(500).setOrigin(0.5, 1);
+      const teeSprite = createMarkerSprite(this.scene, this.isoMap, hole.teePosition, 'tee_marker');
       this.markerSprites.push(teeSprite);
 
       // Flag marker sprite
-      const flagPos = this.isoMap.tileToWorld(hole.flagPosition.tileX, hole.flagPosition.tileY);
-      const flagSprite = this.scene.add.image(flagPos.x, flagPos.y - 12, 'flag');
-      flagSprite.setDepth(500).setOrigin(0.5, 1);
+      const flagSprite = createMarkerSprite(this.scene, this.isoMap, hole.flagPosition, 'flag');
       this.markerSprites.push(flagSprite);
     }
 

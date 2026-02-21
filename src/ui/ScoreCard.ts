@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { HoleData } from '../models/HoleData';
 import { t } from '../i18n/i18n';
+import { getScoreColor, getScoreText } from '../utils/ScoreUtils';
 
 export class ScoreCard {
   private container: Phaser.GameObjects.Container;
@@ -54,13 +55,14 @@ export class ScoreCard {
       totalStrokes += holeStrokes;
       totalPar += hole.par;
 
-      const color = diff < 0 ? '#4caf50' : diff > 0 ? '#f44336' : '#ffffff';
+      const colorHex = getScoreColor(diff);
+      const color = `#${colorHex.toString(16).padStart(6, '0')}`;
 
       const holeNum = scene.add.text(-140, y, `${i + 1}`, { fontSize: '12px', color: '#ffffff' });
       const parText = scene.add.text(0, y, `${hole.par}`, { fontSize: '12px', color: '#aaaaaa' }).setOrigin(0.5, 0);
       const strokeText = scene.add.text(80, y, `${holeStrokes}`, { fontSize: '12px', color });
       strokeText.setOrigin(0.5, 0);
-      const scoreText = scene.add.text(150, y, diff === 0 ? 'E' : (diff > 0 ? `+${diff}` : `${diff}`), {
+      const scoreText = scene.add.text(150, y, getScoreText(diff), {
         fontSize: '12px',
         color,
       }).setOrigin(0.5, 0);
@@ -72,12 +74,13 @@ export class ScoreCard {
     // Total row
     y += 8;
     const totalDiff = totalStrokes - totalPar;
-    const totalColor = totalDiff < 0 ? '#4caf50' : totalDiff > 0 ? '#f44336' : '#ffffff';
+    const totalColorHex = getScoreColor(totalDiff);
+    const totalColor = `#${totalColorHex.toString(16).padStart(6, '0')}`;
 
     const totalLabel = scene.add.text(-140, y, 'Total', { fontSize: '14px', color: '#ffffff', fontStyle: 'bold' });
     const totalParText = scene.add.text(0, y, `${totalPar}`, { fontSize: '14px', color: '#aaaaaa', fontStyle: 'bold' }).setOrigin(0.5, 0);
     const totalStrokeText = scene.add.text(80, y, `${totalStrokes}`, { fontSize: '14px', color: totalColor, fontStyle: 'bold' }).setOrigin(0.5, 0);
-    const totalScoreText = scene.add.text(150, y, totalDiff === 0 ? 'E' : (totalDiff > 0 ? `+${totalDiff}` : `${totalDiff}`), {
+    const totalScoreText = scene.add.text(150, y, getScoreText(totalDiff), {
       fontSize: '14px',
       color: totalColor,
       fontStyle: 'bold',
