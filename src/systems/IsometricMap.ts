@@ -274,14 +274,38 @@ export class IsometricMap {
     this._terrainDirty = true;
   }
 
-  /** Dual-grid terrain transitions: draw a mesh diamond at each vertex
-   *  where different terrain types meet, subdivided into 4 quadrants
-   *  colored by the surrounding tiles. */
+  /** Dual-grid terrain transitions: draw a mesh diamond at each internal vertex
+   *  where different terrain types meet. The diamond tips are at the actual
+   *  tile centers (elevation-aware), subdivided into 4 quadrants colored by
+   *  the surrounding tiles. */
   updateBlendOverlays(): void {
     this.blendGraphics.clear();
 
-    const hw = TILE_WIDTH / 2;  // 32
-    const hh = TILE_HEIGHT / 2; // 16
+    // Precompute all vertex screen positions (elevation-aware)
+    const vPos: { x: number; y: number }[][] = [];
+    for (let j = 0; j <= this.height; j++) {
+      vPos[j] = [];
+      for (let i = 0; i <= this.width; i++) {
+        vPos[j][i] = this.getVertexScreenPos(i, j);
+      }
+    }
+
+    // Helper: tile center = average of its 4 corner screen positions
+    const tileCtr = (tx: number, ty: number): { x: number; y: number } => {
+      const a = vPos[ty][tx];
+      const b = vPos[ty][tx + 1];
+      const c = vPos[ty + 1][tx + 1];
+      const d = vPos[ty + 1][tx];
+      return {
+        x: (a.x + b.x + c.x + d.x) / 4,
+        y: (a.y + b.y + c.y + d.y) / 4,
+      };
+    };
+
+    const mid = (a: { x: number; y: number }, b: { x: number; y: number }) => ({
+      x: (a.x + b.x) / 2,
+      y: (a.y + b.y) / 2,
+    });
 
     // Iterate internal vertices (where 4 tiles share a corner)
     for (let j = 1; j < this.height; j++) {
@@ -295,26 +319,26 @@ export class IsometricMap {
         // Skip if all same terrain — base tiles already cover this
         if (tN === tE && tE === tS && tS === tW) continue;
 
-        // Vertex screen position (center of mesh diamond)
-        const c = this.getVertexScreenPos(i, j);
+        // Center = actual vertex screen position (with elevation)
+        const c = vPos[j][i];
 
-        // Diamond tips
-        const n = { x: c.x, y: c.y - hh };
-        const e = { x: c.x + hw, y: c.y };
-        const s = { x: c.x, y: c.y + hh };
-        const w = { x: c.x - hw, y: c.y };
+        // Diamond tips = tile centers (elevation-aware)
+        const tcN = tileCtr(i - 1, j - 1);
+        const tcE = tileCtr(i, j - 1);
+        const tcS = tileCtr(i, j);
+        const tcW = tileCtr(i - 1, j);
 
-        // Edge midpoints (divide diamond into 4 quadrants)
-        const mn = { x: c.x + hw / 2, y: c.y - hh / 2 };
-        const me = { x: c.x + hw / 2, y: c.y + hh / 2 };
-        const ms = { x: c.x - hw / 2, y: c.y + hh / 2 };
-        const mw = { x: c.x - hw / 2, y: c.y - hh / 2 };
+        // Edge midpoints between center vertex and its 4 neighbors
+        const mNE = mid(c, vPos[j - 1][i]);   // edge shared by tN & tE
+        const mSE = mid(c, vPos[j][i + 1]);   // edge shared by tE & tS
+        const mSW = mid(c, vPos[j + 1][i]);   // edge shared by tS & tW
+        const mNW = mid(c, vPos[j][i - 1]);   // edge shared by tW & tN
 
-        // Draw 4 quadrants, each in its tile's terrain color
-        this.fillQuad(mw, n, mn, c, TILE_PROPERTIES[tN].color);
-        this.fillQuad(mn, e, me, c, TILE_PROPERTIES[tE].color);
-        this.fillQuad(c, me, s, ms, TILE_PROPERTIES[tS].color);
-        this.fillQuad(c, ms, w, mw, TILE_PROPERTIES[tW].color);
+        // 4 quadrants (clockwise winding)
+        this.fillQuad(mNW, tcN, mNE, c, TILE_PROPERTIES[tN].color);
+        this.fillQuad(mNE, tcE, mSE, c, TILE_PROPERTIES[tE].color);
+        this.fillQuad(mSE, tcS, mSW, c, TILE_PROPERTIES[tS].color);
+        this.fillQuad(mSW, tcW, mNW, c, TILE_PROPERTIES[tW].color);
       }
     }
   }

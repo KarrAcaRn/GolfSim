@@ -28,7 +28,8 @@
       "Bash(/srv/projects/GolfSim/src/models/CourseData.ts:*)",
       "Bash(/srv/projects/GolfSim/src/editor/EditorState.ts:*)",
       "Bash(/srv/projects/GolfSim/src/editor/ElevationPlacer.ts:*)",
-      "Bash(npx vitest run:*)"
+      "Bash(npx vitest run:*)",
+      "WebFetch(domain:excaliburjs.com)"
     ]
   }
 }
