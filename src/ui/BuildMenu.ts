@@ -4,6 +4,7 @@ import { TileType, TILE_PROPERTIES } from '../models/TileTypes';
 import { EditorTool } from '../editor/EditorState';
 import { t } from '../i18n/i18n';
 import { EventBus } from '../utils/EventBus';
+import { addUIElement } from '../utils/UIUtils';
 
 const MENU_WIDTH = 160;
 const MENU_X = 4;
@@ -23,46 +24,45 @@ export class BuildMenu {
     this.setVisible(false);
   }
 
-  private addElement<T extends Phaser.GameObjects.GameObject>(el: T, depth = MENU_DEPTH): T {
-    this.elements.push(el);
-    if ('setScrollFactor' in el) (el as any).setScrollFactor(0);
-    if ('setDepth' in el) (el as any).setDepth(depth);
-    return el;
-  }
 
   private createMenu(): void {
     const { height } = this.scene.scale;
     let y = 4;
 
     // Background panel
-    this.addElement(
+    addUIElement(
       this.scene.add.rectangle(0, 0, MENU_WIDTH + 8, height, 0x1a1a2e, 0.95)
-        .setOrigin(0, 0)
+        .setOrigin(0, 0),
+      this.elements,
+      MENU_DEPTH
     );
 
     // Title
-    this.addElement(
+    addUIElement(
       this.scene.add.text(MENU_WIDTH / 2 + 4, y + 6, t('editor.buildMenu.title' as any), {
         fontSize: '13px',
         color: '#ffcc00',
         fontStyle: 'bold',
       }).setOrigin(0.5, 0),
+      this.elements,
       MENU_DEPTH + 1
     );
     y += 30;
 
     // === Terrain Category ===
-    this.addElement(
+    addUIElement(
       this.scene.add.rectangle(MENU_X, y, MENU_WIDTH, 22, 0x333355, 1)
         .setOrigin(0, 0),
+      this.elements,
       MENU_DEPTH + 1
     );
-    this.addElement(
+    addUIElement(
       this.scene.add.text(MENU_X + 6, y + 3, `▼ ${t('editor.buildMenu.terrain' as any)}`, {
         fontSize: '12px',
         color: '#aabbff',
         fontStyle: 'bold',
       }).setOrigin(0, 0),
+      this.elements,
       MENU_DEPTH + 2
     );
     y += 26;
@@ -82,9 +82,10 @@ export class BuildMenu {
       const props = TILE_PROPERTIES[type];
 
       // Color swatch
-      this.addElement(
+      addUIElement(
         this.scene.add.rectangle(MENU_X + 6, y + BUTTON_HEIGHT / 2, 14, 14, props.color)
           .setOrigin(0, 0.5),
+        this.elements,
         MENU_DEPTH + 2
       );
 
@@ -110,17 +111,19 @@ export class BuildMenu {
     y += 6;
 
     // === Modify Terrain Category ===
-    this.addElement(
+    addUIElement(
       this.scene.add.rectangle(MENU_X, y, MENU_WIDTH, 22, 0x333355, 1)
         .setOrigin(0, 0),
+      this.elements,
       MENU_DEPTH + 1
     );
-    this.addElement(
+    addUIElement(
       this.scene.add.text(MENU_X + 6, y + 3, `▼ ${t('editor.buildMenu.modifyTerrain' as any)}`, {
         fontSize: '12px',
         color: '#aabbff',
         fontStyle: 'bold',
       }).setOrigin(0, 0),
+      this.elements,
       MENU_DEPTH + 2
     );
     y += 26;
@@ -164,17 +167,19 @@ export class BuildMenu {
     y += 6;
 
     // === Tools Category ===
-    this.addElement(
+    addUIElement(
       this.scene.add.rectangle(MENU_X, y, MENU_WIDTH, 22, 0x333355, 1)
         .setOrigin(0, 0),
+      this.elements,
       MENU_DEPTH + 1
     );
-    this.addElement(
+    addUIElement(
       this.scene.add.text(MENU_X + 6, y + 3, `▼ ${t('editor.buildMenu.tools' as any)}`, {
         fontSize: '12px',
         color: '#aabbff',
         fontStyle: 'bold',
       }).setOrigin(0, 0),
+      this.elements,
       MENU_DEPTH + 2
     );
     y += 26;

@@ -145,16 +145,7 @@ export class BallPhysics {
 
       if (Math.abs(this.vz) > MIN_BOUNCE_VZ && props.bounceFactor > 0) {
         // Bounce: create temporary state, apply bounce logic, copy results back
-        const state: BallState = {
-          x: this.groundX,
-          y: this.groundY,
-          z: this.z,
-          vx: this.groundVx,
-          vy: this.groundVy,
-          vz: this.vz,
-          spinDirection: this.spinDirection,
-          spinAngle: this.spinAngle
-        };
+        const state = this.createBallState();
 
         this.applyBounce(state, props);
 
@@ -189,16 +180,7 @@ export class BallPhysics {
     }
 
     // Create temporary state
-    const state: BallState = {
-      x: this.groundX,
-      y: this.groundY,
-      z: this.z,
-      vx: this.groundVx,
-      vy: this.groundVy,
-      vz: this.vz,
-      spinDirection: this.spinDirection,
-      spinAngle: this.spinAngle
-    };
+    const state = this.createBallState();
 
     // Apply ground roll step and get speed before friction
     const speed = this.applyGroundRollStep(state, dt);
@@ -241,6 +223,19 @@ export class BallPhysics {
     const { tileX: stx, tileY: sty } = this.isoMap.worldToTile(this.groundX, this.groundY);
     const shadowElev = this.isoMap.getElevationAt(stx, sty);
     this.shadowGraphics.fillEllipse(this.groundX, this.groundY - shadowElev * ELEVATION_STEP, rx * 2, ry * 2);
+  }
+
+  private createBallState(): BallState {
+    return {
+      x: this.groundX,
+      y: this.groundY,
+      z: this.z,
+      vx: this.groundVx,
+      vy: this.groundVy,
+      vz: this.vz,
+      spinDirection: this.spinDirection,
+      spinAngle: this.spinAngle
+    };
   }
 
   private applyBounce(state: BallState, terrainProps: typeof TILE_PROPERTIES[TileType]): void {
