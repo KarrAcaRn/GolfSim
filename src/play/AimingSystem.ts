@@ -78,32 +78,40 @@ export class AimingSystem {
     return CLUBS[this.clubIndex];
   }
 
-  private selectClub(index: number): void {
-    if (index < 0 || index >= CLUBS.length) return;
+  private trySelectClub(index: number): boolean {
+    if (index < 0 || index >= CLUBS.length) return false;
     const club = CLUBS[index];
     if (club.teeOnly && !this.isOnTee()) {
       EventBus.emit('club-restricted', t('clubs.teeOnly'));
-      return;
+      return false;
     }
     this.clubIndex = index;
-    this.shotPanel.setSelectedClubIndex(index);
+    return true;
+  }
+
+  private selectClub(index: number): void {
+    if (this.trySelectClub(index)) {
+      this.shotPanel.setSelectedClubIndex(index);
+    }
   }
 
   private selectClubFromPanel(index: number): void {
-    if (index < 0 || index >= CLUBS.length) return;
-    const club = CLUBS[index];
-    if (club.teeOnly && !this.isOnTee()) {
-      EventBus.emit('club-restricted', t('clubs.teeOnly'));
+    if (!this.trySelectClub(index)) {
       this.shotPanel.setSelectedClubIndex(this.clubIndex);
-      return;
     }
-    this.clubIndex = index;
   }
 
   private isOnTee(): boolean {
     const groundPos = this.ballPhysics.getGroundPosition();
     const { tileX, tileY } = this.isoMap.worldToTile(groundPos.x, groundPos.y);
     return this.isoMap.getTileAt(tileX, tileY) === TileType.TEE;
+  }
+
+  private getTerrainModifier() {
+    const groundPos = this.ballPhysics.getGroundPosition();
+    const { tileX, tileY } = this.isoMap.worldToTile(groundPos.x, groundPos.y);
+    const tileType = this.isoMap.getTileAt(tileX, tileY);
+    return this.currentClub.terrainModifiers[tileType];
   }
 
   private onPointerMove(pointer: Phaser.Input.Pointer): void {
@@ -153,10 +161,7 @@ export class AimingSystem {
     const power = this.currentPower;
 
     // Get terrain under ball for modifiers
-    const groundPos = this.ballPhysics.getGroundPosition();
-    const { tileX, tileY } = this.isoMap.worldToTile(groundPos.x, groundPos.y);
-    const tileType = this.isoMap.getTileAt(tileX, tileY);
-    const terrainMod = this.currentClub.terrainModifiers[tileType];
+    const terrainMod = this.getTerrainModifier();
 
     // Apply player hit variance with terrain modifiers
     const speedMin = this.hitParams.hitSpeedDifferenceMin + (terrainMod?.hitSpeedDifferenceMin ?? 0);
@@ -206,10 +211,7 @@ export class AimingSystem {
 
     // Also consider spin for trajectory simulation
     const spinDirection = this.shotPanel.getSelectedSpin();
-    const groundPos = this.ballPhysics.getGroundPosition();
-    const { tileX, tileY } = this.isoMap.worldToTile(groundPos.x, groundPos.y);
-    const tileType = this.isoMap.getTileAt(tileX, tileY);
-    const terrainMod = this.currentClub.terrainModifiers[tileType];
+    const terrainMod = this.getTerrainModifier();
     const effectiveSpinAngle = Math.max(0, club.spinAngle + (terrainMod?.spinAngle ?? 0));
 
     for (let i = 0; i <= steps; i++) {
@@ -292,10 +294,7 @@ export class AimingSystem {
     color: number
   ): { x: number; y: number } | null {
     const spinDirection = this.shotPanel.getSelectedSpin();
-    const groundPos = this.ballPhysics.getGroundPosition();
-    const { tileX, tileY } = this.isoMap.worldToTile(groundPos.x, groundPos.y);
-    const tileType = this.isoMap.getTileAt(tileX, tileY);
-    const terrainMod = this.currentClub.terrainModifiers[tileType];
+    const terrainMod = this.getTerrainModifier();
     const effectiveSpinAngle = Math.max(0, this.currentClub.spinAngle + (terrainMod?.spinAngle ?? 0));
 
     const points = this.ballPhysics.simulateTrajectory(
