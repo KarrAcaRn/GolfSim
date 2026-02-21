@@ -31,7 +31,6 @@ interface ElevationChangeData {
 export class EditorState {
   currentTool: EditorTool = EditorTool.PAINT_TERRAIN;
   selectedTerrain: TileType = TileType.FAIRWAY;
-  brushSize = 1;
 
   private undoStack: EditorAction[] = [];
   private redoStack: EditorAction[] = [];
