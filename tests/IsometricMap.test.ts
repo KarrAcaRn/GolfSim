@@ -19,10 +19,18 @@ function createMockScene(): any {
     fillEllipse: vi.fn().mockReturnThis(),
   };
 
+  const mockImage = {
+    setOrigin: vi.fn().mockReturnThis(),
+    setDepth: vi.fn().mockReturnThis(),
+    setTexture: vi.fn().mockReturnThis(),
+    setPosition: vi.fn().mockReturnThis(),
+  };
+
   return {
     add: {
       graphics: vi.fn(() => ({ ...mockGraphics })),
       container: vi.fn(() => ({ add: vi.fn() })),
+      image: vi.fn(() => ({ ...mockImage })),
     },
     events: {
       on: vi.fn(),

@@ -12,7 +12,7 @@ export class IsometricMap {
   private container: Phaser.GameObjects.Container;
   private gridVisible: boolean = true;
   private cornerElevations: number[][];
-  private terrainGraphics: Phaser.GameObjects.Graphics;
+  private tileSprites: Phaser.GameObjects.Image[][];
   private gridGraphics: Phaser.GameObjects.Graphics;
   private blendGraphics: Phaser.GameObjects.Graphics;
   private _terrainDirty = false;
@@ -35,19 +35,32 @@ export class IsometricMap {
       this.cornerElevations[j] = new Array(width + 1).fill(0);
     }
 
-    // Terrain fill graphics (polygon-based rendering)
-    this.terrainGraphics = scene.add.graphics();
-    this.terrainGraphics.setDepth(0);
-    this.container.add(this.terrainGraphics);
+    // Create tile sprites
+    this.tileSprites = [];
+    for (let y = 0; y < height; y++) {
+      this.tileSprites[y] = [];
+      for (let x = 0; x < width; x++) {
+        const worldPos = tileToWorld(x, y);
+        const sprite = scene.add.image(
+          worldPos.x + this.getOffsetX(),
+          worldPos.y + this.getOffsetY(),
+          `tile_${this.tiles[y][x]}`,
+        );
+        sprite.setOrigin(0.5, 0.5);
+        sprite.setDepth(y + x * 0.01);
+        this.container.add(sprite);
+        this.tileSprites[y][x] = sprite;
+      }
+    }
 
     // Blend overlay graphics
     this.blendGraphics = scene.add.graphics();
-    this.blendGraphics.setDepth(1);
+    this.blendGraphics.setDepth(this.width + this.height);
     this.container.add(this.blendGraphics);
 
     // Grid overlay graphics
     this.gridGraphics = scene.add.graphics();
-    this.gridGraphics.setDepth(2);
+    this.gridGraphics.setDepth(this.width + this.height + 1);
     this.container.add(this.gridGraphics);
 
     this.renderAllTiles();
@@ -125,25 +138,23 @@ export class IsometricMap {
     };
   }
 
-  // === Terrain Rendering (polygon-based) ===
+  // === Terrain Rendering (sprite-based) ===
 
   private renderTerrain(): void {
-    this.terrainGraphics.clear();
-
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
+        const sprite = this.tileSprites[y][x];
         const tileType = this.tiles[y][x];
-        const color = TILE_PROPERTIES[tileType].color;
-        const corners = this.getTileCorners(x, y);
+        sprite.setTexture(`tile_${tileType}`);
 
-        this.terrainGraphics.fillStyle(color, 1);
-        this.terrainGraphics.beginPath();
-        this.terrainGraphics.moveTo(corners.n.x, corners.n.y);
-        this.terrainGraphics.lineTo(corners.e.x, corners.e.y);
-        this.terrainGraphics.lineTo(corners.s.x, corners.s.y);
-        this.terrainGraphics.lineTo(corners.w.x, corners.w.y);
-        this.terrainGraphics.closePath();
-        this.terrainGraphics.fillPath();
+        // Position at tile center, offset by average corner elevation
+        const worldPos = tileToWorld(x, y);
+        const avgElev = this.getElevationAt(x, y);
+        sprite.setPosition(
+          worldPos.x + this.getOffsetX(),
+          worldPos.y + this.getOffsetY() - avgElev * ELEVATION_STEP,
+        );
+        sprite.setDepth(y + x * 0.01);
       }
     }
     this.renderGrid();
