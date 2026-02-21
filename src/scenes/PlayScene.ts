@@ -261,6 +261,10 @@ export class PlayScene extends Phaser.Scene {
     this.markerSprites = [];
 
     for (const hole of this.courseData.holes) {
+      // Cup (hole in ground, beneath flag)
+      const cupSprite = createMarkerSprite(this, this.isoMap, hole.flagPosition, 'cup');
+      this.markerSprites.push(cupSprite);
+
       // Flag on green
       const flagSprite = createMarkerSprite(this, this.isoMap, hole.flagPosition, 'flag');
       this.markerSprites.push(flagSprite);

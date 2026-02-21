@@ -16,6 +16,8 @@ export class PreloadScene extends Phaser.Scene {
     this.load.image('player', 'assets/sprites/player.png');
     this.load.image('flag', 'assets/sprites/flag.png');
     this.load.image('tee_marker', 'assets/sprites/tee_marker.png');
+    this.load.image('cup', 'assets/sprites/cup.png');
+    this.load.image('ball_shadow', 'assets/sprites/ball_shadow.png');
   }
 
   create(): void {

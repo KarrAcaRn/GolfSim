@@ -29,7 +29,10 @@
       "Bash(/srv/projects/GolfSim/src/editor/EditorState.ts:*)",
       "Bash(/srv/projects/GolfSim/src/editor/ElevationPlacer.ts:*)",
       "Bash(npx vitest run:*)",
-      "WebFetch(domain:excaliburjs.com)"
+      "WebFetch(domain:excaliburjs.com)",
+      "Bash(python3:*)",
+      "Bash(node -e:*)",
+      "Bash(node:*)"
     ]
   }
 }

@@ -45,7 +45,7 @@ export class BallPhysics {
   private groundVy = 0;
   private isAirborne = false;
   private isRolling = false;
-  private shadowGraphics!: Phaser.GameObjects.Graphics;
+  private shadowSprite!: Phaser.GameObjects.Image;
 
   // Spin properties
   private spinDirection: number = 0;  // -1 = left, 0 = none, +1 = right
@@ -54,8 +54,8 @@ export class BallPhysics {
   constructor(scene: Phaser.Scene, isoMap: IsometricMap) {
     this.scene = scene;
     this.isoMap = isoMap;
-    this.shadowGraphics = scene.add.graphics();
-    this.shadowGraphics.setDepth(799);
+    this.shadowSprite = scene.add.image(0, 0, 'ball_shadow');
+    this.shadowSprite.setDepth(799).setVisible(false);
   }
 
   createBall(worldX: number, worldY: number): Phaser.Types.Physics.Arcade.SpriteWithDynamicBody {
@@ -211,18 +211,21 @@ export class BallPhysics {
   }
 
   private drawShadow(): void {
-    this.shadowGraphics.clear();
-    if (!this.isAirborne || this.z <= 1) return;
+    if (!this.isAirborne || this.z <= 1) {
+      this.shadowSprite.setVisible(false);
+      return;
+    }
 
     const shadowScale = Math.max(0.3, 1 - this.z / 300);
-    const rx = 6 * shadowScale;
-    const ry = 3 * shadowScale;
     const alpha = 0.4 * shadowScale;
 
-    this.shadowGraphics.fillStyle(0x000000, alpha);
     const { tileX: stx, tileY: sty } = this.isoMap.worldToTile(this.groundX, this.groundY);
     const shadowElev = this.isoMap.getElevationAt(stx, sty);
-    this.shadowGraphics.fillEllipse(this.groundX, this.groundY - shadowElev * ELEVATION_STEP, rx * 2, ry * 2);
+
+    this.shadowSprite.setPosition(this.groundX, this.groundY - shadowElev * ELEVATION_STEP);
+    this.shadowSprite.setScale(shadowScale);
+    this.shadowSprite.setAlpha(alpha);
+    this.shadowSprite.setVisible(true);
   }
 
   private createBallState(): BallState {
@@ -438,6 +441,6 @@ export class BallPhysics {
 
   destroy(): void {
     if (this.ball) this.ball.destroy();
-    if (this.shadowGraphics) this.shadowGraphics.destroy();
+    if (this.shadowSprite) this.shadowSprite.destroy();
   }
 }

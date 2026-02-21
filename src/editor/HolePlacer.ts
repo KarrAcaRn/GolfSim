@@ -124,6 +124,10 @@ export class HolePlacer {
       const teeSprite = createMarkerSprite(this.scene, this.isoMap, hole.teePosition, 'tee_marker');
       this.markerSprites.push(teeSprite);
 
+      // Cup (hole in ground, beneath flag)
+      const cupSprite = createMarkerSprite(this.scene, this.isoMap, hole.flagPosition, 'cup');
+      this.markerSprites.push(cupSprite);
+
       // Flag marker sprite
       const flagSprite = createMarkerSprite(this.scene, this.isoMap, hole.flagPosition, 'flag');
       this.markerSprites.push(flagSprite);

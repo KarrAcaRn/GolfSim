@@ -19,7 +19,7 @@ export function addUIElement<T extends Phaser.GameObjects.GameObject>(
  * @param scene - Phaser scene
  * @param isoMap - Isometric map for coordinate conversion
  * @param tileCoord - Tile coordinate
- * @param spriteKey - Texture key ('flag' or 'tee_marker')
+ * @param spriteKey - Texture key ('flag', 'tee_marker', or 'cup')
  * @param yOffset - Vertical offset from tile position (default: -12 for flag, -6 for tee_marker)
  * @returns Created sprite
  */
@@ -27,12 +27,13 @@ export function createMarkerSprite(
   scene: Phaser.Scene,
   isoMap: IsometricMap,
   tileCoord: TileCoord,
-  spriteKey: 'flag' | 'tee_marker',
+  spriteKey: 'flag' | 'tee_marker' | 'cup',
   yOffset?: number,
 ): Phaser.GameObjects.Image {
   const worldPos = isoMap.tileToWorld(tileCoord.tileX, tileCoord.tileY);
-  const defaultOffset = spriteKey === 'flag' ? -12 : -6;
-  const sprite = scene.add.image(worldPos.x, worldPos.y + (yOffset ?? defaultOffset), spriteKey);
-  sprite.setDepth(500).setOrigin(0.5, 1);
+  const defaultOffsets: Record<string, number> = { flag: -12, tee_marker: -6, cup: 0 };
+  const defaultDepths: Record<string, number> = { flag: 500, tee_marker: 500, cup: 499 };
+  const sprite = scene.add.image(worldPos.x, worldPos.y + (yOffset ?? defaultOffsets[spriteKey]), spriteKey);
+  sprite.setDepth(defaultDepths[spriteKey]).setOrigin(0.5, 0.5);
   return sprite;
 }
