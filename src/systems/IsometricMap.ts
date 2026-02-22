@@ -12,7 +12,7 @@ export class IsometricMap {
   private container: Phaser.GameObjects.Container;
   private gridVisible: boolean = true;
   private cornerElevations: number[][];
-  private terrainGraphics: Phaser.GameObjects.Graphics;
+  private tileMeshes: Phaser.GameObjects.Mesh[][];
   private gridGraphics: Phaser.GameObjects.Graphics;
   private blendGraphics: Phaser.GameObjects.Graphics;
   private _terrainDirty = false;
@@ -35,10 +35,18 @@ export class IsometricMap {
       this.cornerElevations[j] = new Array(width + 1).fill(0);
     }
 
-    // Terrain fill graphics (elevation-aware polygons)
-    this.terrainGraphics = scene.add.graphics();
-    this.terrainGraphics.setDepth(0);
-    this.container.add(this.terrainGraphics);
+    // Create tile meshes (textured quads that deform with elevation)
+    this.tileMeshes = [];
+    for (let y = 0; y < height; y++) {
+      this.tileMeshes[y] = [];
+      for (let x = 0; x < width; x++) {
+        const mesh = scene.add.mesh(0, 0, `tile_${this.tiles[y][x]}`);
+        mesh.setOrtho(TILE_WIDTH, TILE_HEIGHT + MAX_ELEVATION * ELEVATION_STEP * 2);
+        mesh.setDepth(y + x * 0.01);
+        this.container.add(mesh);
+        this.tileMeshes[y][x] = mesh;
+      }
+    }
 
     // Blend overlay graphics
     this.blendGraphics = scene.add.graphics();
@@ -125,23 +133,41 @@ export class IsometricMap {
     };
   }
 
-  // === Terrain Rendering (sprite-based) ===
+  // === Terrain Rendering (mesh-based, textured quads deformed by elevation) ===
+
+  // Diamond UV coordinates: N=top-center, E=right-center, S=bottom-center, W=left-center
+  private static readonly TILE_UVS = [
+    0.5, 0.0,   // N
+    1.0, 0.5,   // E
+    0.5, 1.0,   // S
+    0.0, 0.5,   // W
+  ];
+  private static readonly TILE_INDICES = [0, 1, 2, 0, 2, 3]; // triangles: N-E-S, N-S-W
 
   private renderTerrain(): void {
-    this.terrainGraphics.clear();
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
-        const corners = this.getTileCorners(x, y);
-        const color = TILE_PROPERTIES[this.tiles[y][x]].color;
+        const mesh = this.tileMeshes[y][x];
+        mesh.setTexture(`tile_${this.tiles[y][x]}`);
 
-        this.terrainGraphics.fillStyle(color, 1);
-        this.terrainGraphics.beginPath();
-        this.terrainGraphics.moveTo(corners.n.x, corners.n.y);
-        this.terrainGraphics.lineTo(corners.e.x, corners.e.y);
-        this.terrainGraphics.lineTo(corners.s.x, corners.s.y);
-        this.terrainGraphics.lineTo(corners.w.x, corners.w.y);
-        this.terrainGraphics.closePath();
-        this.terrainGraphics.fillPath();
+        const corners = this.getTileCorners(x, y);
+
+        // Mesh center = average of 4 corners
+        const cx = (corners.n.x + corners.e.x + corners.s.x + corners.w.x) / 4;
+        const cy = (corners.n.y + corners.e.y + corners.s.y + corners.w.y) / 4;
+        mesh.setPosition(cx, cy);
+
+        // Vertex positions relative to mesh center
+        const verts = [
+          corners.n.x - cx, -(corners.n.y - cy),
+          corners.e.x - cx, -(corners.e.y - cy),
+          corners.s.x - cx, -(corners.s.y - cy),
+          corners.w.x - cx, -(corners.w.y - cy),
+        ];
+
+        mesh.clear();
+        mesh.addVertices(verts, IsometricMap.TILE_UVS, IsometricMap.TILE_INDICES);
+        mesh.setDepth(y + x * 0.01);
       }
     }
     this.renderGrid();
