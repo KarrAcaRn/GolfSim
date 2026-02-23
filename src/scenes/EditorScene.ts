@@ -11,6 +11,7 @@ import { MAP_WIDTH, MAP_HEIGHT } from '../utils/Constants';
 import { EventBus } from '../utils/EventBus';
 import { CourseStorage } from '../storage/CourseStorage';
 import { t } from '../i18n/i18n';
+import { GuestManager } from '../guests/GuestManager';
 
 export class EditorScene extends Phaser.Scene {
   private isoMap!: IsometricMap;
@@ -20,6 +21,7 @@ export class EditorScene extends Phaser.Scene {
   private holePlacer!: HolePlacer;
   private elevationPlacer!: ElevationPlacer;
   private courseData!: CourseData;
+  private guestManager!: GuestManager;
 
   constructor() {
     super({ key: 'Editor' });
@@ -52,6 +54,12 @@ export class EditorScene extends Phaser.Scene {
     // Load existing holes if any
     if (this.courseData.holes.length > 0) {
       this.holePlacer.setHoles(this.courseData.holes);
+    }
+
+    // Guest simulation
+    this.guestManager = new GuestManager(this, this.isoMap);
+    if (this.courseData.holes.length > 0) {
+      this.guestManager.start(this.courseData.holes);
     }
 
     // Keyboard shortcuts
@@ -117,6 +125,10 @@ export class EditorScene extends Phaser.Scene {
       this.editorState.currentTool = tool;
     });
 
+    EventBus.on('hole-placed', () => {
+      this.guestManager.start(this.holePlacer.getHoles());
+    });
+
     EventBus.on('editor-play', () => {
       const holes = this.holePlacer.getHoles();
       if (holes.length === 0) {
@@ -158,6 +170,7 @@ export class EditorScene extends Phaser.Scene {
   update(_time: number, delta: number): void {
     this.cameraController.update(delta);
     this.holePlacer.update();
+    this.guestManager.update(delta);
   }
 
   getIsoMap(): IsometricMap {
@@ -178,6 +191,7 @@ export class EditorScene extends Phaser.Scene {
   }
 
   shutdown(): void {
+    this.guestManager.destroy();
     EventBus.removeAllListeners();
   }
 }

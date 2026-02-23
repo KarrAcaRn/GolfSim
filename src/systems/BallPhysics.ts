@@ -33,6 +33,7 @@ export class BallPhysics {
   private scene: Phaser.Scene;
   private ball!: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
   private isoMap: IsometricMap;
+  private silent: boolean;
   private strokeCount = 0;
   private lastSafePosition: { x: number; y: number } = { x: 0, y: 0 };
 
@@ -51,9 +52,10 @@ export class BallPhysics {
   private spinDirection: number = 0;  // -1 = left, 0 = none, +1 = right
   private spinAngle: number = 0;      // effective spin angle in degrees
 
-  constructor(scene: Phaser.Scene, isoMap: IsometricMap) {
+  constructor(scene: Phaser.Scene, isoMap: IsometricMap, silent: boolean = false) {
     this.scene = scene;
     this.isoMap = isoMap;
+    this.silent = silent;
     this.shadowSprite = scene.add.image(0, 0, 'ball_shadow');
     this.shadowSprite.setDepth(799).setVisible(false);
   }
@@ -106,7 +108,7 @@ export class BallPhysics {
     }
 
     this.strokeCount++;
-    EventBus.emit('stroke-taken', this.strokeCount);
+    if (!this.silent) EventBus.emit('stroke-taken', this.strokeCount);
   }
 
   update(delta: number): void {
@@ -306,7 +308,7 @@ export class BallPhysics {
     this.groundX = this.lastSafePosition.x;
     this.groundY = this.lastSafePosition.y;
     this.ball.setPosition(this.lastSafePosition.x, this.lastSafePosition.y);
-    EventBus.emit('water-hazard', this.strokeCount);
+    if (!this.silent) EventBus.emit('water-hazard', this.strokeCount);
   }
 
   private isHazard(wx: number, wy: number): boolean {

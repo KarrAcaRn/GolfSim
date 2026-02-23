@@ -12,6 +12,7 @@ import { ScoreCard } from '../ui/ScoreCard';
 import { ShotPanel } from '../ui/ShotPanel';
 import { t } from '../i18n/i18n';
 import { createMarkerSprite } from '../utils/UIUtils';
+import { GuestManager } from '../guests/GuestManager';
 
 export class PlayScene extends Phaser.Scene {
   private isoMap!: IsometricMap;
@@ -30,6 +31,7 @@ export class PlayScene extends Phaser.Scene {
     messageText: Phaser.GameObjects.Text;
   };
   private markerSprites: Phaser.GameObjects.Image[] = [];
+  private guestManager!: GuestManager;
 
   constructor() {
     super({ key: 'Play' });
@@ -77,6 +79,10 @@ export class PlayScene extends Phaser.Scene {
     const ballPos = this.ballPhysics.getGroundPosition();
     this.playerCharacter.setPosition(ballPos.x - 30, ballPos.y - 15);
     this.playerCharacter.walkTo(ballPos.x, ballPos.y);
+
+    // Guest NPCs
+    this.guestManager = new GuestManager(this, this.isoMap);
+    this.guestManager.start(this.courseData.holes);
 
     // HUD
     this.createHUD();
@@ -280,6 +286,7 @@ export class PlayScene extends Phaser.Scene {
     this.ballPhysics.update(delta);
     this.aimingSystem.update();
     this.playerCharacter.update(delta);
+    this.guestManager.update(delta);
 
     // Follow ball's ground position while in motion
     if (!this.ballPhysics.isStopped()) {
@@ -290,6 +297,7 @@ export class PlayScene extends Phaser.Scene {
 
   shutdown(): void {
     this.markerSprites.forEach(s => s.destroy());
+    this.guestManager.destroy();
     EventBus.removeAllListeners();
     this.ballPhysics.destroy();
     this.aimingSystem.destroy();
