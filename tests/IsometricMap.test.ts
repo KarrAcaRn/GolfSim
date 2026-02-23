@@ -17,6 +17,7 @@ function createMockScene(): any {
     fillPath: vi.fn().mockReturnThis(),
     strokePath: vi.fn().mockReturnThis(),
     fillEllipse: vi.fn().mockReturnThis(),
+    fillTriangle: vi.fn().mockReturnThis(),
   };
 
   const mockImage = {

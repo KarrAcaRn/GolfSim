@@ -12,7 +12,9 @@ export class IsometricMap {
   private container: Phaser.GameObjects.Container;
   private gridVisible: boolean = true;
   private cornerElevations: number[][];
+  private terrainFillGraphics: Phaser.GameObjects.Graphics;
   private tileSprites: Phaser.GameObjects.Image[][];
+  private slopeGraphics: Phaser.GameObjects.Graphics;
   private gridGraphics: Phaser.GameObjects.Graphics;
   private blendGraphics: Phaser.GameObjects.Graphics;
   private _terrainDirty = false;
@@ -35,6 +37,11 @@ export class IsometricMap {
       this.cornerElevations[j] = new Array(width + 1).fill(0);
     }
 
+    // Colored polygon fill behind sprites (fills gaps on slopes)
+    this.terrainFillGraphics = scene.add.graphics();
+    this.terrainFillGraphics.setDepth(-1);
+    this.container.add(this.terrainFillGraphics);
+
     // Create tile sprites (positioned at elevation-aware centers)
     this.tileSprites = [];
     for (let y = 0; y < height; y++) {
@@ -47,6 +54,11 @@ export class IsometricMap {
         this.tileSprites[y][x] = sprite;
       }
     }
+
+    // Slope shading overlay (light/shadow on sloped tiles)
+    this.slopeGraphics = scene.add.graphics();
+    this.slopeGraphics.setDepth(this.width + this.height - 0.5);
+    this.container.add(this.slopeGraphics);
 
     // Blend overlay graphics
     this.blendGraphics = scene.add.graphics();
@@ -133,13 +145,17 @@ export class IsometricMap {
     };
   }
 
-  // === Terrain Rendering (sprite-based, positioned at elevation-aware centers) ===
+  // === Terrain Rendering (sprite-based with polygon fill + slope shading) ===
 
   private renderTerrain(): void {
+    this.terrainFillGraphics.clear();
+    this.slopeGraphics.clear();
+
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
         const sprite = this.tileSprites[y][x];
-        sprite.setTexture(`tile_${this.tiles[y][x]}`);
+        const tileType = this.tiles[y][x];
+        sprite.setTexture(`tile_${tileType}`);
 
         const corners = this.getTileCorners(x, y);
         // Position sprite at average of 4 elevation-aware corner positions
@@ -147,9 +163,81 @@ export class IsometricMap {
         const cy = (corners.n.y + corners.e.y + corners.s.y + corners.w.y) / 4;
         sprite.setPosition(cx, cy);
         sprite.setDepth(y + x * 0.01);
+
+        // Draw colored polygon fill behind sprite (fills gaps on slopes)
+        const color = TILE_PROPERTIES[tileType].color;
+        this.terrainFillGraphics.fillStyle(color, 1);
+        this.terrainFillGraphics.beginPath();
+        this.terrainFillGraphics.moveTo(corners.n.x, corners.n.y);
+        this.terrainFillGraphics.lineTo(corners.e.x, corners.e.y);
+        this.terrainFillGraphics.lineTo(corners.s.x, corners.s.y);
+        this.terrainFillGraphics.lineTo(corners.w.x, corners.w.y);
+        this.terrainFillGraphics.closePath();
+        this.terrainFillGraphics.fillPath();
+
+        // Slope shading: light from top-left, darken low side
+        this.renderSlopeShading(x, y, corners);
       }
     }
     this.renderGrid();
+  }
+
+  /** Draw semi-transparent shading on sloped tiles for 3D depth effect.
+   *  Light source is top-left. Higher corners get a white highlight,
+   *  lower corners get a dark shadow. Each tile is split into 2 triangles. */
+  private renderSlopeShading(
+    x: number, y: number,
+    corners: { n: { x: number; y: number }; e: { x: number; y: number }; s: { x: number; y: number }; w: { x: number; y: number } },
+  ): void {
+    const n = this.cornerElevations[y][x];
+    const e = this.cornerElevations[y][x + 1];
+    const s = this.cornerElevations[y + 1][x + 1];
+    const w = this.cornerElevations[y + 1][x];
+    const avg = (n + e + s + w) / 4;
+
+    // Skip flat tiles
+    if (n === e && e === s && s === w) return;
+
+    // For each corner, compute how much above/below average it is
+    // Light comes from top-left (N and W corners are "facing the light")
+    // N corner = top of diamond, W = left → these face the light source
+    // S corner = bottom, E = right → these face away
+    const maxElev = MAX_ELEVATION - MIN_ELEVATION; // total range
+    const intensity = 0.15; // max shading alpha
+
+    // Compute per-corner light factor: positive = lit, negative = shadowed
+    // Light direction favors N (top) and W (left) corners
+    const nLight = (n - avg) / maxElev;
+    const eLight = (e - avg) / maxElev;
+    const sLight = (s - avg) / maxElev;
+    const wLight = (w - avg) / maxElev;
+
+    // Draw two triangles per tile with appropriate shading
+    // Triangle 1: N-E-S (right half)
+    const triLight1 = (nLight + eLight + sLight) / 3;
+    if (Math.abs(triLight1) > 0.01) {
+      const isLit = triLight1 > 0;
+      const alpha = Math.min(Math.abs(triLight1) * intensity * 3, intensity);
+      this.slopeGraphics.fillStyle(isLit ? 0xffffff : 0x000000, alpha);
+      this.slopeGraphics.fillTriangle(
+        corners.n.x, corners.n.y,
+        corners.e.x, corners.e.y,
+        corners.s.x, corners.s.y,
+      );
+    }
+
+    // Triangle 2: N-S-W (left half)
+    const triLight2 = (nLight + sLight + wLight) / 3;
+    if (Math.abs(triLight2) > 0.01) {
+      const isLit = triLight2 > 0;
+      const alpha = Math.min(Math.abs(triLight2) * intensity * 3, intensity);
+      this.slopeGraphics.fillStyle(isLit ? 0xffffff : 0x000000, alpha);
+      this.slopeGraphics.fillTriangle(
+        corners.n.x, corners.n.y,
+        corners.s.x, corners.s.y,
+        corners.w.x, corners.w.y,
+      );
+    }
   }
 
   private renderGrid(): void {
