@@ -39,7 +39,8 @@
       "Bash(npm run:*)",
       "Bash(git commit:*)",
       "Bash(git revert:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(git mv:*)"
     ]
   }
 }

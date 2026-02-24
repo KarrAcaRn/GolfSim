@@ -1,4 +1,7 @@
 import Phaser from 'phaser';
+import { TILE_NAMES, TileType } from '../models/TileTypes';
+
+const VARIANTS_PER_TILE = 5;
 
 export class PreloadScene extends Phaser.Scene {
   constructor() {
@@ -7,9 +10,10 @@ export class PreloadScene extends Phaser.Scene {
 
   preload(): void {
     // Load tile textures (5 variants per type)
-    for (let type = 0; type <= 6; type++) {
-      for (let v = 0; v < 5; v++) {
-        this.load.image(`tile_${type}_${v}`, `assets/sprites/tiles/tile_${type}_${v}.png`);
+    for (const type of Object.values(TileType).filter((v): v is TileType => typeof v === 'number')) {
+      const name = TILE_NAMES[type];
+      for (let v = 0; v < VARIANTS_PER_TILE; v++) {
+        this.load.image(`tile_${name}_${v}`, `assets/sprites/tiles/tile_${name}_${v}.png`);
       }
     }
 

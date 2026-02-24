@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { TILE_WIDTH, TILE_HEIGHT, ELEVATION_STEP, MIN_ELEVATION, MAX_ELEVATION } from '../utils/Constants';
-import { TileType, TILE_PROPERTIES } from '../models/TileTypes';
+import { TileType, TILE_PROPERTIES, TILE_NAMES } from '../models/TileTypes';
 import { CourseData } from '../models/CourseData';
 import { tileToWorld } from '../utils/IsoUtils';
 
@@ -53,7 +53,7 @@ export class IsometricMap {
     for (let y = 0; y < height; y++) {
       this.tileSprites[y] = [];
       for (let x = 0; x < width; x++) {
-        const sprite = scene.add.image(0, 0, `tile_${this.tiles[y][x]}_${this.tileVariants[y][x]}`);
+        const sprite = scene.add.image(0, 0, `tile_${TILE_NAMES[this.tiles[y][x]]}_${this.tileVariants[y][x]}`);
         sprite.setOrigin(0.5, 0.5);
         sprite.setDepth(y + x * 0.01);
         this.container.add(sprite);
@@ -161,7 +161,7 @@ export class IsometricMap {
       for (let x = 0; x < this.width; x++) {
         const sprite = this.tileSprites[y][x];
         const tileType = this.tiles[y][x];
-        sprite.setTexture(`tile_${tileType}_${this.tileVariants[y][x]}`);
+        sprite.setTexture(`tile_${TILE_NAMES[tileType]}_${this.tileVariants[y][x]}`);
 
         const corners = this.getTileCorners(x, y);
         // Position sprite at average of 4 elevation-aware corner positions

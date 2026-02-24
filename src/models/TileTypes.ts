@@ -31,3 +31,14 @@ export const TILE_PROPERTIES: Record<TileType, TileProperties> = {
 };
 
 export const TILE_TYPE_COUNT = Object.keys(TILE_PROPERTIES).length;
+
+/** Lowercase name used in texture keys: `tile_${TILE_NAMES[type]}_${variant}` */
+export const TILE_NAMES: Record<TileType, string> = {
+  [TileType.GRASS]: 'grass',
+  [TileType.FAIRWAY]: 'fairway',
+  [TileType.GREEN]: 'green',
+  [TileType.SAND]: 'sand',
+  [TileType.WATER]: 'water',
+  [TileType.ROUGH]: 'rough',
+  [TileType.TEE]: 'tee',
+};

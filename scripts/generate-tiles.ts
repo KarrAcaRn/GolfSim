@@ -8,13 +8,13 @@ const TILE_HEIGHT = 32;
 
 // Tile types and colors from TileTypes.ts
 const TILE_PROPERTIES = {
-  0: { type: 0, color: 0x4a8f3f, name: 'GRASS' },
-  1: { type: 1, color: 0x5cb85c, name: 'FAIRWAY' },
-  2: { type: 2, color: 0x7dcea0, name: 'GREEN' },
-  3: { type: 3, color: 0xd4b96a, name: 'SAND' },
-  4: { type: 4, color: 0x3498db, name: 'WATER' },
-  5: { type: 5, color: 0x3d7a33, name: 'ROUGH' },
-  6: { type: 6, color: 0x8fbc8f, name: 'TEE' },
+  0: { type: 0, color: 0x4a8f3f, name: 'grass' },
+  1: { type: 1, color: 0x5cb85c, name: 'fairway' },
+  2: { type: 2, color: 0x7dcea0, name: 'green' },
+  3: { type: 3, color: 0xd4b96a, name: 'sand' },
+  4: { type: 4, color: 0x3498db, name: 'water' },
+  5: { type: 5, color: 0x3d7a33, name: 'rough' },
+  6: { type: 6, color: 0x8fbc8f, name: 'tee' },
 };
 
 // ─── Helper functions ────────────────────────────────────────────────────────
@@ -772,15 +772,15 @@ function main(): void {
     const props = TILE_PROPERTIES[tileType as keyof typeof TILE_PROPERTIES];
     for (let v = 0; v < VARIANTS_PER_TILE; v++) {
       const buffer = generateTile(tileType, v);
-      const outPath = path.join(tilesDir, `tile_${tileType}_${v}.png`);
+      const outPath = path.join(tilesDir, `tile_${props.name}_${v}.png`);
       fs.writeFileSync(outPath, buffer);
     }
-    console.log(`  [OK] ${props.name}: tile_${tileType}_0..${VARIANTS_PER_TILE - 1}.png`);
+    console.log(`  [OK] ${props.name}: tile_${props.name}_0..${VARIANTS_PER_TILE - 1}.png`);
   }
 
-  // Remove old single-variant files
+  // Remove old numeric-named files (tile_0.png, tile_0_0.png, etc.)
   for (let tileType = 0; tileType < 7; tileType++) {
-    for (const suffix of ['', '_clean']) {
+    for (const suffix of ['', '_clean', '_0', '_1', '_2', '_3', '_4']) {
       const oldPath = path.join(tilesDir, `tile_${tileType}${suffix}.png`);
       if (fs.existsSync(oldPath)) {
         fs.unlinkSync(oldPath);
