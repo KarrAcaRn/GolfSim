@@ -5,7 +5,6 @@ import { MatchScoreSheet, HoleScore, createEmptyScoreSheet } from '../models/Mat
 
 enum PairPhase {
   WALKING_TO_TEE,
-  TEE_SHOTS,
   TURN_PLAY,
   HOLE_COMPLETE,
 }
@@ -18,7 +17,6 @@ export class GuestPair {
   private holes: HoleData[];
   private currentHoleIndex: number;
   private phase: PairPhase = PairPhase.WALKING_TO_TEE;
-  private teeOrder: 'A' | 'B' = 'A';
   private holeCompleteTimer = 0;
   private scoreSheet: MatchScoreSheet = createEmptyScoreSheet();
 
@@ -44,7 +42,6 @@ export class GuestPair {
     this.playerA.startHole(hole);
     this.playerB.startHole(hole);
     this.phase = PairPhase.WALKING_TO_TEE;
-    this.teeOrder = 'A';
   }
 
   update(delta: number): void {
@@ -55,9 +52,6 @@ export class GuestPair {
       case PairPhase.WALKING_TO_TEE:
         this.updateWalkingToTee();
         break;
-      case PairPhase.TEE_SHOTS:
-        this.updateTeeShots();
-        break;
       case PairPhase.TURN_PLAY:
         this.updateTurnPlay();
         break;
@@ -67,35 +61,9 @@ export class GuestPair {
     }
   }
 
-  /** Both players walk to tee. When both arrive (WAITING), first player tees off. */
+  /** Both players walk to tee. When both arrive, transition to turn play. */
   private updateWalkingToTee(): void {
     if (this.playerA.isWaiting() && this.playerB.isWaiting()) {
-      // Both at tee — first player starts aiming
-      if (this.teeOrder === 'A') {
-        this.playerA.activate();
-      } else {
-        this.playerB.activate();
-      }
-      this.phase = PairPhase.TEE_SHOTS;
-    }
-  }
-
-  /** Tee shots: A shoots, then B shoots (or vice versa). */
-  private updateTeeShots(): void {
-    const first = this.teeOrder === 'A' ? this.playerA : this.playerB;
-    const second = this.teeOrder === 'A' ? this.playerB : this.playerA;
-
-    // If a ball is in flight, wait
-    if (first.isBallFlying() || second.isBallFlying()) return;
-
-    if (first.isWaiting() && second.needsTeeShot()) {
-      // First player's ball landed — second player tees off
-      second.activate();
-      return;
-    }
-
-    if (first.isWaiting() && second.isWaiting() && !first.needsTeeShot() && !second.needsTeeShot()) {
-      // Both tee shots done — transition to turn play
       this.phase = PairPhase.TURN_PLAY;
       this.activateNextPlayer();
     }
