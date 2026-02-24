@@ -411,7 +411,9 @@ function drawTeePattern(
 
 // ─── Main tile generation ────────────────────────────────────────────────────
 
-function generateTile(tileType: number): Buffer {
+const VARIANTS_PER_TILE = 5;
+
+function generateTile(tileType: number, variant: number = 0): Buffer {
   const canvas = createCanvas(TILE_WIDTH, TILE_HEIGHT);
   const ctx = canvas.getContext('2d');
   const halfW = TILE_WIDTH / 2;
@@ -420,7 +422,7 @@ function generateTile(tileType: number): Buffer {
   ctx.clearRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
 
   const props = TILE_PROPERTIES[tileType as keyof typeof TILE_PROPERTIES];
-  const rand = seededRandom(tileType * 1337 + 42);
+  const rand = seededRandom(tileType * 1337 + variant * 7919 + 42);
 
   // 1. Solid diamond base fill
   ctx.fillStyle = colorToRgba(props.color, 1);
@@ -765,21 +767,25 @@ function main(): void {
 
   console.log('Generating tile textures...\n');
 
-  // Generate 7 tile PNGs (no _clean variants)
+  // Generate 5 variants per tile type
   for (let tileType = 0; tileType < 7; tileType++) {
     const props = TILE_PROPERTIES[tileType as keyof typeof TILE_PROPERTIES];
-    const buffer = generateTile(tileType);
-    const outPath = path.join(tilesDir, `tile_${tileType}.png`);
-    fs.writeFileSync(outPath, buffer);
-    console.log(`  [OK] ${props.name}: tile_${tileType}.png`);
+    for (let v = 0; v < VARIANTS_PER_TILE; v++) {
+      const buffer = generateTile(tileType, v);
+      const outPath = path.join(tilesDir, `tile_${tileType}_${v}.png`);
+      fs.writeFileSync(outPath, buffer);
+    }
+    console.log(`  [OK] ${props.name}: tile_${tileType}_0..${VARIANTS_PER_TILE - 1}.png`);
   }
 
-  // Remove old _clean variants if they still exist
+  // Remove old single-variant files
   for (let tileType = 0; tileType < 7; tileType++) {
-    const cleanPath = path.join(tilesDir, `tile_${tileType}_clean.png`);
-    if (fs.existsSync(cleanPath)) {
-      fs.unlinkSync(cleanPath);
-      console.log(`  [removed] tile_${tileType}_clean.png`);
+    for (const suffix of ['', '_clean']) {
+      const oldPath = path.join(tilesDir, `tile_${tileType}${suffix}.png`);
+      if (fs.existsSync(oldPath)) {
+        fs.unlinkSync(oldPath);
+        console.log(`  [removed] tile_${tileType}${suffix}.png`);
+      }
     }
   }
 

@@ -37,7 +37,9 @@
       "Bash(/srv/projects/GolfSim/src/guests/GuestManager.ts:*)",
       "Bash(npm run type-check:*)",
       "Bash(npm run:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git revert:*)",
+      "Bash(git stash:*)"
     ]
   }
 }

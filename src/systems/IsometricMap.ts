@@ -9,6 +9,7 @@ export class IsometricMap {
   private width: number;
   private height: number;
   private tiles: TileType[][];
+  private tileVariants: number[][];
   private container: Phaser.GameObjects.Container;
   private gridVisible: boolean = true;
   private cornerElevations: number[][];
@@ -27,8 +28,13 @@ export class IsometricMap {
 
     // Initialize tile data
     this.tiles = [];
+    this.tileVariants = [];
     for (let y = 0; y < height; y++) {
       this.tiles[y] = new Array(width).fill(TileType.GRASS);
+      this.tileVariants[y] = [];
+      for (let x = 0; x < width; x++) {
+        this.tileVariants[y][x] = Math.floor(Math.random() * 5);
+      }
     }
 
     // Initialize corner elevations: (width+1) x (height+1) vertex grid
@@ -47,7 +53,7 @@ export class IsometricMap {
     for (let y = 0; y < height; y++) {
       this.tileSprites[y] = [];
       for (let x = 0; x < width; x++) {
-        const sprite = scene.add.image(0, 0, `tile_${this.tiles[y][x]}`);
+        const sprite = scene.add.image(0, 0, `tile_${this.tiles[y][x]}_${this.tileVariants[y][x]}`);
         sprite.setOrigin(0.5, 0.5);
         sprite.setDepth(y + x * 0.01);
         this.container.add(sprite);
@@ -155,7 +161,7 @@ export class IsometricMap {
       for (let x = 0; x < this.width; x++) {
         const sprite = this.tileSprites[y][x];
         const tileType = this.tiles[y][x];
-        sprite.setTexture(`tile_${tileType}`);
+        sprite.setTexture(`tile_${tileType}_${this.tileVariants[y][x]}`);
 
         const corners = this.getTileCorners(x, y);
         // Position sprite at average of 4 elevation-aware corner positions
@@ -276,6 +282,7 @@ export class IsometricMap {
     if (!this.isInBounds(tileX, tileY)) return;
     if (this.tiles[tileY][tileX] === type) return;
     this.tiles[tileY][tileX] = type;
+    this.tileVariants[tileY][tileX] = Math.floor(Math.random() * 5);
     this._terrainDirty = true;
   }
 
@@ -455,6 +462,7 @@ export class IsometricMap {
     for (let y = 0; y < Math.min(data.height, this.height); y++) {
       for (let x = 0; x < Math.min(data.width, this.width); x++) {
         this.tiles[y][x] = data.tiles[y][x];
+        this.tileVariants[y][x] = Math.floor(Math.random() * 5);
       }
     }
 

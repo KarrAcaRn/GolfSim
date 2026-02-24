@@ -6,9 +6,11 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   preload(): void {
-    // Load tile textures
+    // Load tile textures (5 variants per type)
     for (let type = 0; type <= 6; type++) {
-      this.load.image(`tile_${type}`, `assets/sprites/tiles/tile_${type}.png`);
+      for (let v = 0; v < 5; v++) {
+        this.load.image(`tile_${type}_${v}`, `assets/sprites/tiles/tile_${type}_${v}.png`);
+      }
     }
 
     // Load sprite assets
