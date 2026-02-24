@@ -79,10 +79,11 @@ export class GuestPair {
       return;
     }
 
-    // If a ball is in flight, wait
-    if (this.playerA.isBallFlying() || this.playerB.isBallFlying()) return;
+    // Wait until both players are either WAITING or HOLED (nobody aiming/walking/flying)
+    const aBusy = !this.playerA.isWaiting() && !this.playerA.isHoled();
+    const bBusy = !this.playerB.isWaiting() && !this.playerB.isHoled();
+    if (aBusy || bBusy) return;
 
-    // If someone just finished their shot (WAITING) and needs to be activated
     this.activateNextPlayer();
   }
 
