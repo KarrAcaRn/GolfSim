@@ -51,5 +51,15 @@
   "editor.buildMenu.raise": "Raise (+)",
   "editor.buildMenu.lower": "Lower (-)",
   "editor.buildMenu.tools": "Tools",
-  "editor.optionsMenu.title": "Options"
+  "editor.optionsMenu.title": "Options",
+  "info.title": "Player Info",
+  "info.strength": "Strength",
+  "info.accuracy": "Accuracy",
+  "info.driver": "Driver",
+  "info.wood": "Wood",
+  "info.iron": "Iron",
+  "info.sandWedge": "Sand Wedge",
+  "info.putter": "Putter",
+  "info.leftSpin": "Left Spin",
+  "info.rightSpin": "Right Spin"
 }

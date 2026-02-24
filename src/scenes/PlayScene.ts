@@ -13,6 +13,7 @@ import { ShotPanel } from '../ui/ShotPanel';
 import { t } from '../i18n/i18n';
 import { createMarkerSprite } from '../utils/UIUtils';
 import { GuestManager } from '../guests/GuestManager';
+import { InfoPanel } from '../ui/InfoPanel';
 
 export class PlayScene extends Phaser.Scene {
   private isoMap!: IsometricMap;
@@ -32,6 +33,8 @@ export class PlayScene extends Phaser.Scene {
   };
   private markerSprites: Phaser.GameObjects.Image[] = [];
   private guestManager!: GuestManager;
+  private infoPanel!: InfoPanel;
+  private guestClickedFlag = false;
 
   constructor() {
     super({ key: 'Play' });
@@ -83,6 +86,9 @@ export class PlayScene extends Phaser.Scene {
     // Guest NPCs
     this.guestManager = new GuestManager(this, this.isoMap);
     this.guestManager.start(this.courseData.holes);
+
+    // Info panel for guest skills
+    this.infoPanel = new InfoPanel(this);
 
     // HUD
     this.createHUD();
@@ -158,6 +164,23 @@ export class PlayScene extends Phaser.Scene {
       // Make player walk to ball
       const groundPos = this.ballPhysics.getGroundPosition();
       this.playerCharacter.walkTo(groundPos.x, groundPos.y);
+    });
+
+    EventBus.on('guest-selected', (skills: import('../models/GuestSkills').GuestSkills) => {
+      this.infoPanel.show(skills);
+      this.guestClickedFlag = true;
+    });
+
+    EventBus.on('guest-deselected', () => {
+      this.infoPanel.hide();
+    });
+
+    // Click on empty space hides info panel
+    this.input.on('pointerdown', () => {
+      if (!this.guestClickedFlag && this.infoPanel.isVisible()) {
+        EventBus.emit('guest-deselected');
+      }
+      this.guestClickedFlag = false;
     });
   }
 
@@ -298,6 +321,7 @@ export class PlayScene extends Phaser.Scene {
   shutdown(): void {
     this.markerSprites.forEach(s => s.destroy());
     this.guestManager.destroy();
+    this.infoPanel.destroy();
     EventBus.removeAllListeners();
     this.ballPhysics.destroy();
     this.aimingSystem.destroy();
