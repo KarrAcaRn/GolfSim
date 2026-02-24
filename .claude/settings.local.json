@@ -40,7 +40,9 @@
       "Bash(git commit:*)",
       "Bash(git revert:*)",
       "Bash(git stash:*)",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "Bash(identify:*)",
+      "Bash(/srv/projects/GolfSim/src/systems/IsometricMap.ts:*)"
     ]
   }
 }

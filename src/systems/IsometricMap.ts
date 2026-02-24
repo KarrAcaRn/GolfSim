@@ -17,7 +17,8 @@ export class IsometricMap {
   private tileSprites: Phaser.GameObjects.Image[][];
   private slopeGraphics: Phaser.GameObjects.Graphics;
   private gridGraphics: Phaser.GameObjects.Graphics;
-  private blendGraphics: Phaser.GameObjects.Graphics;
+  private blendImage: Phaser.GameObjects.Image | null = null;
+  private blendCanvasKey = '__blend_overlay__';
   private _terrainDirty = false;
 
   constructor(scene: Phaser.Scene, width: number, height: number) {
@@ -66,10 +67,7 @@ export class IsometricMap {
     this.slopeGraphics.setDepth(this.width + this.height - 0.5);
     this.container.add(this.slopeGraphics);
 
-    // Blend overlay graphics
-    this.blendGraphics = scene.add.graphics();
-    this.blendGraphics.setDepth(this.width + this.height);
-    this.container.add(this.blendGraphics);
+    // Blend overlay (CanvasTexture image, created lazily in updateBlendOverlays)
 
     // Grid overlay graphics
     this.gridGraphics = scene.add.graphics();
@@ -377,7 +375,37 @@ export class IsometricMap {
    *  tile centers (elevation-aware), subdivided into 4 quadrants colored by
    *  the surrounding tiles. */
   updateBlendOverlays(): void {
-    this.blendGraphics.clear();
+    // Compute world bounds for canvas sizing
+    const bounds = this.getWorldBounds();
+    const cw = Math.ceil(bounds.width);
+    const ch = Math.ceil(bounds.height);
+    const originX = bounds.x;
+    const originY = bounds.y;
+
+    // Create or resize CanvasTexture
+    if (this.scene.textures.exists(this.blendCanvasKey)) {
+      const existing = this.scene.textures.get(this.blendCanvasKey);
+      const src = existing.getSourceImage() as HTMLCanvasElement;
+      if (src.width !== cw || src.height !== ch) {
+        // Size changed — destroy and recreate
+        if (this.blendImage) {
+          this.container.remove(this.blendImage);
+          this.blendImage.destroy();
+          this.blendImage = null;
+        }
+        this.scene.textures.remove(this.blendCanvasKey);
+      }
+    }
+
+    let canvasTex: Phaser.Textures.CanvasTexture;
+    if (!this.scene.textures.exists(this.blendCanvasKey)) {
+      canvasTex = this.scene.textures.createCanvas(this.blendCanvasKey, cw, ch)!;
+    } else {
+      canvasTex = this.scene.textures.get(this.blendCanvasKey) as Phaser.Textures.CanvasTexture;
+    }
+
+    const ctx = canvasTex.getContext();
+    ctx.clearRect(0, 0, cw, ch);
 
     // Precompute all vertex screen positions (elevation-aware)
     const vPos: { x: number; y: number }[][] = [];
@@ -433,29 +461,63 @@ export class IsometricMap {
         const mNW = mid(c, vPos[j][i - 1]);   // edge shared by tW & tN
 
         // 4 quadrants (clockwise winding)
-        this.fillQuad(mNW, tcN, mNE, c, TILE_PROPERTIES[tN].color);
-        this.fillQuad(mNE, tcE, mSE, c, TILE_PROPERTIES[tE].color);
-        this.fillQuad(mSE, tcS, mSW, c, TILE_PROPERTIES[tS].color);
-        this.fillQuad(mSW, tcW, mNW, c, TILE_PROPERTIES[tW].color);
+        this.fillQuadWithPattern(ctx, originX, originY, mNW, tcN, mNE, c, tN, i - 1, j - 1);
+        this.fillQuadWithPattern(ctx, originX, originY, mNE, tcE, mSE, c, tE, i, j - 1);
+        this.fillQuadWithPattern(ctx, originX, originY, mSE, tcS, mSW, c, tS, i, j);
+        this.fillQuadWithPattern(ctx, originX, originY, mSW, tcW, mNW, c, tW, i - 1, j);
       }
+    }
+
+    canvasTex.refresh();
+
+    // Create or update the Image game object
+    if (!this.blendImage) {
+      this.blendImage = this.scene.add.image(originX, originY, this.blendCanvasKey);
+      this.blendImage.setOrigin(0, 0);
+      this.blendImage.setDepth(this.width + this.height);
+      this.container.add(this.blendImage);
+    } else {
+      this.blendImage.setPosition(originX, originY);
+      this.blendImage.setTexture(this.blendCanvasKey);
     }
   }
 
-  private fillQuad(
+  private fillQuadWithPattern(
+    ctx: CanvasRenderingContext2D,
+    originX: number,
+    originY: number,
     a: { x: number; y: number },
     b: { x: number; y: number },
     c: { x: number; y: number },
     d: { x: number; y: number },
-    color: number,
+    terrainType: TileType,
+    tileX: number,
+    tileY: number,
   ): void {
-    this.blendGraphics.fillStyle(color, 1);
-    this.blendGraphics.beginPath();
-    this.blendGraphics.moveTo(a.x, a.y);
-    this.blendGraphics.lineTo(b.x, b.y);
-    this.blendGraphics.lineTo(c.x, c.y);
-    this.blendGraphics.lineTo(d.x, d.y);
-    this.blendGraphics.closePath();
-    this.blendGraphics.fillPath();
+    // Build pattern from tile texture (variant 0)
+    const texKey = `tile_${TILE_NAMES[terrainType]}_0`;
+    if (!this.scene.textures.exists(texKey)) return;
+    const img = this.scene.textures.get(texKey).getSourceImage() as HTMLImageElement | HTMLCanvasElement;
+    const pat = ctx.createPattern(img, 'repeat');
+    if (!pat) return;
+
+    // Compute pattern offset so it aligns with the tile grid
+    const tileWorld = this.tileToWorld(tileX, tileY);
+    const offsetX = (tileWorld.x - TILE_WIDTH / 2) - originX;
+    const offsetY = (tileWorld.y - TILE_HEIGHT / 2) - originY;
+    pat.setTransform(new DOMMatrix().translateSelf(offsetX, offsetY));
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(a.x - originX, a.y - originY);
+    ctx.lineTo(b.x - originX, b.y - originY);
+    ctx.lineTo(c.x - originX, c.y - originY);
+    ctx.lineTo(d.x - originX, d.y - originY);
+    ctx.closePath();
+    ctx.clip();
+    ctx.fillStyle = pat;
+    ctx.fill();
+    ctx.restore();
   }
 
   loadFromData(data: CourseData): void {
