@@ -204,7 +204,7 @@ export class AimingSystem {
 
   private findOptimalPower(ballX: number, ballY: number, angle: number, targetX: number, targetY: number): number {
     const club = this.currentClub;
-    const steps = 10;
+    const steps = 100;
     let bestPower = club.minPower;
     let bestDist = Infinity;
 

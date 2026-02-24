@@ -210,7 +210,7 @@ export class GuestPlayer {
       const skillFactor = clubSkill / 100;
       const idealMid = club.minPower + (club.maxPower - club.minPower) * (0.4 + 0.3 * skillFactor);
 
-      const steps = 10;
+      const steps = 100;
       for (let s = 0; s <= steps; s++) {
         const power = club.minPower + (club.maxPower - club.minPower) * (s / steps);
 
