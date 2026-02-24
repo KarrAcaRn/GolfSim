@@ -3,93 +3,167 @@ import { HoleData } from '../models/HoleData';
 import { t } from '../i18n/i18n';
 import { getScoreColor, getScoreText } from '../utils/ScoreUtils';
 
+interface PlayerRow {
+  name: string;
+  strokes: number[];
+  tint?: number;
+}
+
+/**
+ * Horizontal scorecard table:
+ *   | Hole   | 1 | 2 | 3 | ... | Total |
+ *   | Par    | 3 | 4 | 5 | ... |  36   |
+ *   | Player | 4 | 3 | 6 | ... |  38   |
+ *   | Guest  | 3 | 5 | 4 | ... |  35   |
+ *
+ * Uses individual elements with setScrollFactor(0) — NO Container.
+ */
 export class ScoreCard {
-  private container: Phaser.GameObjects.Container;
-  private bg: Phaser.GameObjects.Rectangle;
+  private elements: Phaser.GameObjects.GameObject[] = [];
 
   constructor(
     scene: Phaser.Scene,
     holes: HoleData[],
-    strokes: number[]
+    players: PlayerRow[],
   ) {
+    const holeCount = holes.length;
+    const colW = 36;
+    const labelW = 70;
+    const totalColW = 50;
+    const rowH = 24;
+    const headerH = 28;
+    const padding = 16;
+
+    const tableW = labelW + holeCount * colW + totalColW;
+    const rowCount = 2 + players.length; // header + par + players
+    const tableH = headerH + rowCount * rowH;
+    const cardW = tableW + padding * 2;
+    const cardH = tableH + padding * 2 + 50; // extra space for title + continue text
+
     const { width, height } = scene.scale;
-    this.container = scene.add.container(width / 2, height / 2);
-    this.container.setDepth(3000);
-    this.container.setScrollFactor(0);
+    const originX = (width - cardW) / 2;
+    const originY = (height - cardH) / 2;
 
-    const cardWidth = 400;
-    const rowHeight = 24;
-    const cardHeight = 80 + holes.length * rowHeight + 40;
+    const depth = 3000;
 
-    // Background
-    this.bg = scene.add.rectangle(0, 0, cardWidth, cardHeight, 0x222222, 0.95);
-    this.bg.setStrokeStyle(2, 0x888888);
-    this.container.add(this.bg);
+    // Dimmed background overlay
+    const overlay = scene.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.6)
+      .setScrollFactor(0).setDepth(depth - 1);
+    this.elements.push(overlay);
+
+    // Card background
+    const bg = scene.add.graphics().setScrollFactor(0).setDepth(depth);
+    bg.fillStyle(0x1a1a2e, 0.95);
+    bg.fillRoundedRect(originX, originY, cardW, cardH, 10);
+    bg.lineStyle(2, 0x888888, 0.8);
+    bg.strokeRoundedRect(originX, originY, cardW, cardH, 10);
+    this.elements.push(bg);
 
     // Title
-    const titleText = scene.add.text(0, -cardHeight / 2 + 20, t('play.courseComplete'), {
-      fontSize: '22px',
+    const title = scene.add.text(width / 2, originY + 18, t('play.courseComplete'), {
+      fontSize: '20px',
       color: '#ffdd00',
       fontStyle: 'bold',
-    }).setOrigin(0.5);
-    this.container.add(titleText);
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(depth);
+    this.elements.push(title);
 
-    // Headers
-    let y = -cardHeight / 2 + 55;
-    const headerText = scene.add.text(-140, y, 'Hole', { fontSize: '12px', color: '#888888' });
-    const parHeader = scene.add.text(0, y, 'Par', { fontSize: '12px', color: '#888888' }).setOrigin(0.5, 0);
-    const strokeHeader = scene.add.text(80, y, 'Strokes', { fontSize: '12px', color: '#888888' }).setOrigin(0.5, 0);
-    const scoreHeader = scene.add.text(150, y, 'Score', { fontSize: '12px', color: '#888888' }).setOrigin(0.5, 0);
-    this.container.add([headerText, parHeader, strokeHeader, scoreHeader]);
+    const tableX = originX + padding;
+    const tableY = originY + 50;
 
-    y += rowHeight;
+    // --- Header row: Hole | 1 | 2 | ... | Total ---
+    this.addCell(scene, tableX, tableY, labelW, headerH, 'Hole', '#888888', 'bold', depth);
+    for (let i = 0; i < holeCount; i++) {
+      this.addCell(scene, tableX + labelW + i * colW, tableY, colW, headerH, `${i + 1}`, '#bbbbbb', 'bold', depth);
+    }
+    this.addCell(scene, tableX + labelW + holeCount * colW, tableY, totalColW, headerH, 'Total', '#888888', 'bold', depth);
 
-    // Hole rows
-    let totalStrokes = 0;
-    let totalPar = 0;
+    // Separator line under header
+    const sepY = tableY + headerH;
+    const sepLine = scene.add.graphics().setScrollFactor(0).setDepth(depth);
+    sepLine.lineStyle(1, 0x555555);
+    sepLine.lineBetween(tableX, sepY, tableX + tableW, sepY);
+    this.elements.push(sepLine);
 
-    for (let i = 0; i < holes.length; i++) {
-      const hole = holes[i];
-      const holeStrokes = strokes[i] || 0;
-      const diff = holeStrokes - hole.par;
-      totalStrokes += holeStrokes;
-      totalPar += hole.par;
+    // --- Par row ---
+    const parY = tableY + headerH;
+    const totalPar = holes.reduce((s, h) => s + h.par, 0);
+    this.addCell(scene, tableX, parY, labelW, rowH, 'Par', '#888888', 'normal', depth);
+    for (let i = 0; i < holeCount; i++) {
+      this.addCell(scene, tableX + labelW + i * colW, parY, colW, rowH, `${holes[i].par}`, '#aaaaaa', 'normal', depth);
+    }
+    this.addCell(scene, tableX + labelW + holeCount * colW, parY, totalColW, rowH, `${totalPar}`, '#aaaaaa', 'bold', depth);
 
-      const colorHex = getScoreColor(diff);
-      const color = `#${colorHex.toString(16).padStart(6, '0')}`;
+    // --- Player rows ---
+    for (let p = 0; p < players.length; p++) {
+      const player = players[p];
+      const rowY = parY + rowH + p * rowH;
 
-      const holeNum = scene.add.text(-140, y, `${i + 1}`, { fontSize: '12px', color: '#ffffff' });
-      const parText = scene.add.text(0, y, `${hole.par}`, { fontSize: '12px', color: '#aaaaaa' }).setOrigin(0.5, 0);
-      const strokeText = scene.add.text(80, y, `${holeStrokes}`, { fontSize: '12px', color });
-      strokeText.setOrigin(0.5, 0);
-      const scoreText = scene.add.text(150, y, getScoreText(diff), {
-        fontSize: '12px',
-        color,
-      }).setOrigin(0.5, 0);
+      // Separator line between par and first player
+      if (p === 0) {
+        const sep2 = scene.add.graphics().setScrollFactor(0).setDepth(depth);
+        sep2.lineStyle(1, 0x444444);
+        sep2.lineBetween(tableX, rowY, tableX + tableW, rowY);
+        this.elements.push(sep2);
+      }
 
-      this.container.add([holeNum, parText, strokeText, scoreText]);
-      y += rowHeight;
+      // Player name with tint-colored indicator
+      const nameColor = player.tint
+        ? `#${player.tint.toString(16).padStart(6, '0')}`
+        : '#ffffff';
+      this.addCell(scene, tableX, rowY, labelW, rowH, player.name, nameColor, 'bold', depth);
+
+      // Strokes per hole
+      let playerTotal = 0;
+      for (let i = 0; i < holeCount; i++) {
+        const strokes = player.strokes[i] ?? 0;
+        playerTotal += strokes;
+        const diff = strokes - holes[i].par;
+        const colorHex = getScoreColor(diff);
+        const color = `#${colorHex.toString(16).padStart(6, '0')}`;
+        this.addCell(scene, tableX + labelW + i * colW, rowY, colW, rowH, strokes > 0 ? `${strokes}` : '-', color, 'normal', depth);
+      }
+
+      // Total
+      const totalDiff = playerTotal - totalPar;
+      const totalColorHex = getScoreColor(totalDiff);
+      const totalColor = `#${totalColorHex.toString(16).padStart(6, '0')}`;
+      const totalText = `${playerTotal} (${getScoreText(totalDiff)})`;
+      this.addCell(scene, tableX + labelW + holeCount * colW, rowY, totalColW, rowH, totalText, totalColor, 'bold', depth);
     }
 
-    // Total row
-    y += 8;
-    const totalDiff = totalStrokes - totalPar;
-    const totalColorHex = getScoreColor(totalDiff);
-    const totalColor = `#${totalColorHex.toString(16).padStart(6, '0')}`;
+    // "Click to continue" text
+    const continueText = scene.add.text(width / 2, originY + cardH - 18, t('play.clickToContinue'), {
+      fontSize: '12px',
+      color: '#666666',
+    }).setOrigin(0.5, 1).setScrollFactor(0).setDepth(depth);
+    this.elements.push(continueText);
+  }
 
-    const totalLabel = scene.add.text(-140, y, 'Total', { fontSize: '14px', color: '#ffffff', fontStyle: 'bold' });
-    const totalParText = scene.add.text(0, y, `${totalPar}`, { fontSize: '14px', color: '#aaaaaa', fontStyle: 'bold' }).setOrigin(0.5, 0);
-    const totalStrokeText = scene.add.text(80, y, `${totalStrokes}`, { fontSize: '14px', color: totalColor, fontStyle: 'bold' }).setOrigin(0.5, 0);
-    const totalScoreText = scene.add.text(150, y, getScoreText(totalDiff), {
-      fontSize: '14px',
-      color: totalColor,
-      fontStyle: 'bold',
-    }).setOrigin(0.5, 0);
+  private addCell(
+    scene: Phaser.Scene,
+    x: number, y: number,
+    w: number, h: number,
+    text: string,
+    color: string,
+    style: 'normal' | 'bold',
+    depth: number,
+  ): void {
+    const t = scene.add.text(x + w / 2, y + h / 2, text, {
+      fontSize: '11px',
+      color,
+      fontStyle: style,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(depth);
+    this.elements.push(t);
+  }
 
-    this.container.add([totalLabel, totalParText, totalStrokeText, totalScoreText]);
+  getElements(): Phaser.GameObjects.GameObject[] {
+    return this.elements;
   }
 
   destroy(): void {
-    this.container.destroy();
+    for (const el of this.elements) {
+      el.destroy();
+    }
+    this.elements = [];
   }
 }

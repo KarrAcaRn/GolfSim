@@ -36,6 +36,7 @@ export class PlayScene extends Phaser.Scene {
   private infoPanel!: InfoPanel;
   private guestClickedFlag = false;
   private backBtn!: Phaser.GameObjects.Text;
+  private scoreCard?: ScoreCard;
 
   constructor() {
     super({ key: 'Play' });
@@ -270,27 +271,51 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private onCourseComplete(): void {
-    const totalStrokes = this.holeStrokes.reduce((a, b) => a + b, 0);
-    const totalPar = this.courseData.holes.reduce((a, h) => a + h.par, 0);
-    const diff = totalStrokes - totalPar;
+    // Build player rows for scorecard
+    const players: { name: string; strokes: number[]; tint?: number }[] = [
+      { name: t('play.you'), strokes: [...this.holeStrokes] },
+    ];
 
-    let scoreText: string;
-    if (diff < 0) {
-      scoreText = t('play.underPar', { count: Math.abs(diff) });
-    } else if (diff > 0) {
-      scoreText = t('play.overPar', { count: diff });
-    } else {
-      scoreText = t('play.atPar');
+    // Add guest pair scores if available
+    const sheets = this.guestManager.getScoreSheets();
+    const pairTints = [0xff8888, 0x8888ff];
+    for (let s = 0; s < sheets.length; s++) {
+      const sheet = sheets[s];
+      if (sheet.holeScores.length === 0) continue;
+      const strokesA: number[] = new Array(this.courseData.holes.length).fill(0);
+      const strokesB: number[] = new Array(this.courseData.holes.length).fill(0);
+      for (const hs of sheet.holeScores) {
+        if (hs.holeIndex < strokesA.length) {
+          strokesA[hs.holeIndex] = hs.strokesA;
+          strokesB[hs.holeIndex] = hs.strokesB;
+        }
+      }
+      const tint = pairTints[s % pairTints.length];
+      const lighten = (c: number) => {
+        const r = Math.min(255, ((c >> 16) & 0xff) + 40);
+        const g = Math.min(255, ((c >> 8) & 0xff) + 40);
+        const b = Math.min(255, (c & 0xff) + 40);
+        return (r << 16) | (g << 8) | b;
+      };
+      players.push({ name: `Guest ${s * 2 + 1}`, strokes: strokesA, tint });
+      players.push({ name: `Guest ${s * 2 + 2}`, strokes: strokesB, tint: lighten(tint) });
     }
 
-    this.showMessage(
-      `${t('play.courseComplete')}\n${t('play.totalScore', { score: totalStrokes })} (${scoreText})`,
-      0 // stays visible
-    );
+    this.scoreCard = new ScoreCard(this, this.courseData.holes, players);
 
-    // Return to editor after 5 seconds
-    this.time.delayedCall(5000, () => {
-      this.scene.start('Neutral', { courseData: this.courseData });
+    // Register scorecard elements with UI camera (so they don't zoom)
+    const mainCam = this.cameras.main;
+    for (const el of this.scoreCard.getElements()) {
+      mainCam.ignore(el);
+    }
+
+    // Click to continue → Neutral (with short delay to avoid accidental click)
+    this.time.delayedCall(500, () => {
+      const handler = () => {
+        this.input.off('pointerdown', handler);
+        this.scene.start('Neutral', { courseData: this.courseData });
+      };
+      this.input.on('pointerdown', handler);
     });
   }
 
@@ -353,6 +378,7 @@ export class PlayScene extends Phaser.Scene {
     this.markerSprites.forEach(s => s.destroy());
     this.guestManager.destroy();
     this.infoPanel.destroy();
+    this.scoreCard?.destroy();
     EventBus.removeAllListeners();
     this.ballPhysics.destroy();
     this.aimingSystem.destroy();
