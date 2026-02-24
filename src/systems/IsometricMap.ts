@@ -507,12 +507,19 @@ export class IsometricMap {
     const offsetY = (tileWorld.y - TILE_HEIGHT / 2) - originY;
     pat.setTransform(new DOMMatrix().translateSelf(offsetX, offsetY));
 
+    // Path: two straight outer edges (a→b→c) + one quadratic bezier curve
+    // back to a, using d (vertex center) as control point for smooth rounding
+    const ax = a.x - originX, ay = a.y - originY;
+    const bx = b.x - originX, by = b.y - originY;
+    const cx2 = c.x - originX, cy2 = c.y - originY;
+    const dx = d.x - originX, dy = d.y - originY;
+
     ctx.save();
     ctx.beginPath();
-    ctx.moveTo(a.x - originX, a.y - originY);
-    ctx.lineTo(b.x - originX, b.y - originY);
-    ctx.lineTo(c.x - originX, c.y - originY);
-    ctx.lineTo(d.x - originX, d.y - originY);
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(bx, by);
+    ctx.lineTo(cx2, cy2);
+    ctx.quadraticCurveTo(dx, dy, ax, ay);
     ctx.closePath();
     ctx.clip();
     ctx.fillStyle = pat;
