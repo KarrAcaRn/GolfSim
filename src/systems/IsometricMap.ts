@@ -370,24 +370,22 @@ export class IsometricMap {
     this._terrainDirty = true;
   }
 
-  /** Dual-grid terrain transitions: draw a mesh diamond at each internal vertex
-   *  where different terrain types meet. The diamond tips are at the actual
-   *  tile centers (elevation-aware), subdivided into 4 quadrants colored by
-   *  the surrounding tiles. */
+  /** Smooth per-edge terrain blending: for each tile edge where the terrain
+   *  type changes, draw the neighbor's texture fading inward using stacked
+   *  alpha strips (nested trapezoids). This creates a smooth gradient from
+   *  ~40% opacity at the shared edge down to 0% at 60% depth. */
   updateBlendOverlays(): void {
-    // Compute world bounds for canvas sizing
     const bounds = this.getWorldBounds();
     const cw = Math.ceil(bounds.width);
     const ch = Math.ceil(bounds.height);
-    const originX = bounds.x;
-    const originY = bounds.y;
+    const ox = bounds.x;
+    const oy = bounds.y;
 
     // Create or resize CanvasTexture
     if (this.scene.textures.exists(this.blendCanvasKey)) {
       const existing = this.scene.textures.get(this.blendCanvasKey);
       const src = existing.getSourceImage() as HTMLCanvasElement;
       if (src.width !== cw || src.height !== ch) {
-        // Size changed — destroy and recreate
         if (this.blendImage) {
           this.container.remove(this.blendImage);
           this.blendImage.destroy();
@@ -407,124 +405,92 @@ export class IsometricMap {
     const ctx = canvasTex.getContext();
     ctx.clearRect(0, 0, cw, ch);
 
-    // Precompute all vertex screen positions (elevation-aware)
-    const vPos: { x: number; y: number }[][] = [];
-    for (let j = 0; j <= this.height; j++) {
-      vPos[j] = [];
-      for (let i = 0; i <= this.width; i++) {
-        vPos[j][i] = this.getVertexScreenPos(i, j);
-      }
-    }
-
-    // Helper: tile center = average of its 4 corner screen positions
-    const tileCtr = (tx: number, ty: number): { x: number; y: number } => {
-      const a = vPos[ty][tx];
-      const b = vPos[ty][tx + 1];
-      const c = vPos[ty + 1][tx + 1];
-      const d = vPos[ty + 1][tx];
-      return {
-        x: (a.x + b.x + c.x + d.x) / 4,
-        y: (a.y + b.y + c.y + d.y) / 4,
-      };
+    // Cache one CanvasPattern per terrain type (transform is set per-use)
+    const patternCache = new Map<TileType, CanvasPattern | null>();
+    const getPattern = (type: TileType): CanvasPattern | null => {
+      if (patternCache.has(type)) return patternCache.get(type)!;
+      const texKey = `tile_${TILE_NAMES[type]}_0`;
+      if (!this.scene.textures.exists(texKey)) { patternCache.set(type, null); return null; }
+      const img = this.scene.textures.get(texKey).getSourceImage() as HTMLImageElement | HTMLCanvasElement;
+      const pat = ctx.createPattern(img, 'repeat');
+      patternCache.set(type, pat);
+      return pat;
     };
 
-    const mid = (a: { x: number; y: number }, b: { x: number; y: number }) => ({
-      x: (a.x + b.x) / 2,
-      y: (a.y + b.y) / 2,
-    });
+    const STRIPS = 4;
+    const STRIP_ALPHA = 0.12;
+    const MAX_DEPTH = 0.6; // blend reaches 60% toward tile center
 
-    // Iterate internal vertices (where 4 tiles share a corner)
-    for (let j = 1; j < this.height; j++) {
-      for (let i = 1; i < this.width; i++) {
-        // 4 surrounding tiles
-        const tN = this.tiles[j - 1][i - 1];
-        const tE = this.tiles[j - 1][i];
-        const tS = this.tiles[j][i];
-        const tW = this.tiles[j][i - 1];
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        const type = this.tiles[y][x];
+        const corners = this.getTileCorners(x, y);
+        const center = {
+          x: (corners.n.x + corners.e.x + corners.s.x + corners.w.x) / 4,
+          y: (corners.n.y + corners.e.y + corners.s.y + corners.w.y) / 4,
+        };
 
-        // Skip if all same terrain — base tiles already cover this
-        if (tN === tE && tE === tS && tS === tW) continue;
+        // 4 cardinal neighbors with the two corner points of the shared edge
+        const edges = [
+          { nx: x, ny: y - 1, ec1: corners.n, ec2: corners.e },
+          { nx: x + 1, ny: y, ec1: corners.e, ec2: corners.s },
+          { nx: x, ny: y + 1, ec1: corners.s, ec2: corners.w },
+          { nx: x - 1, ny: y, ec1: corners.w, ec2: corners.n },
+        ];
 
-        // Center = actual vertex screen position (with elevation)
-        const c = vPos[j][i];
+        for (const edge of edges) {
+          if (!this.isInBounds(edge.nx, edge.ny)) continue;
+          const nType = this.tiles[edge.ny][edge.nx];
+          if (nType === type) continue;
 
-        // Diamond tips = tile centers (elevation-aware)
-        const tcN = tileCtr(i - 1, j - 1);
-        const tcE = tileCtr(i, j - 1);
-        const tcS = tileCtr(i, j);
-        const tcW = tileCtr(i - 1, j);
+          const pat = getPattern(nType);
+          if (!pat) continue;
 
-        // Edge midpoints between center vertex and its 4 neighbors
-        const mNE = mid(c, vPos[j - 1][i]);   // edge shared by tN & tE
-        const mSE = mid(c, vPos[j][i + 1]);   // edge shared by tE & tS
-        const mSW = mid(c, vPos[j + 1][i]);   // edge shared by tS & tW
-        const mNW = mid(c, vPos[j][i - 1]);   // edge shared by tW & tN
+          // Align pattern to the neighbor's tile position for seamless continuation
+          const nWorld = this.tileToWorld(edge.nx, edge.ny);
+          pat.setTransform(new DOMMatrix().translateSelf(
+            (nWorld.x - TILE_WIDTH / 2) - ox,
+            (nWorld.y - TILE_HEIGHT / 2) - oy,
+          ));
 
-        // 4 quadrants (clockwise winding)
-        this.fillQuadWithPattern(ctx, originX, originY, mNW, tcN, mNE, c, tN, i - 1, j - 1);
-        this.fillQuadWithPattern(ctx, originX, originY, mNE, tcE, mSE, c, tE, i, j - 1);
-        this.fillQuadWithPattern(ctx, originX, originY, mSE, tcS, mSW, c, tS, i, j);
-        this.fillQuadWithPattern(ctx, originX, originY, mSW, tcW, mNW, c, tW, i - 1, j);
+          // Draw nested trapezoid strips (smallest innermost first, largest last)
+          // Each strip covers from the shared edge to `depth` fraction toward center.
+          // Stacking N strips at STRIP_ALPHA produces a smooth gradient.
+          for (let s = 1; s <= STRIPS; s++) {
+            const depth = MAX_DEPTH * s / STRIPS;
+            const i1x = edge.ec1.x + (center.x - edge.ec1.x) * depth - ox;
+            const i1y = edge.ec1.y + (center.y - edge.ec1.y) * depth - oy;
+            const i2x = edge.ec2.x + (center.x - edge.ec2.x) * depth - ox;
+            const i2y = edge.ec2.y + (center.y - edge.ec2.y) * depth - oy;
+
+            ctx.save();
+            ctx.globalAlpha = STRIP_ALPHA;
+            ctx.beginPath();
+            ctx.moveTo(edge.ec1.x - ox, edge.ec1.y - oy);
+            ctx.lineTo(edge.ec2.x - ox, edge.ec2.y - oy);
+            ctx.lineTo(i2x, i2y);
+            ctx.lineTo(i1x, i1y);
+            ctx.closePath();
+            ctx.clip();
+            ctx.fillStyle = pat;
+            ctx.fill();
+            ctx.restore();
+          }
+        }
       }
     }
 
     canvasTex.refresh();
 
-    // Create or update the Image game object
     if (!this.blendImage) {
-      this.blendImage = this.scene.add.image(originX, originY, this.blendCanvasKey);
+      this.blendImage = this.scene.add.image(ox, oy, this.blendCanvasKey);
       this.blendImage.setOrigin(0, 0);
       this.blendImage.setDepth(this.width + this.height);
       this.container.add(this.blendImage);
     } else {
-      this.blendImage.setPosition(originX, originY);
+      this.blendImage.setPosition(ox, oy);
       this.blendImage.setTexture(this.blendCanvasKey);
     }
-  }
-
-  private fillQuadWithPattern(
-    ctx: CanvasRenderingContext2D,
-    originX: number,
-    originY: number,
-    a: { x: number; y: number },
-    b: { x: number; y: number },
-    c: { x: number; y: number },
-    d: { x: number; y: number },
-    terrainType: TileType,
-    tileX: number,
-    tileY: number,
-  ): void {
-    // Build pattern from tile texture (variant 0)
-    const texKey = `tile_${TILE_NAMES[terrainType]}_0`;
-    if (!this.scene.textures.exists(texKey)) return;
-    const img = this.scene.textures.get(texKey).getSourceImage() as HTMLImageElement | HTMLCanvasElement;
-    const pat = ctx.createPattern(img, 'repeat');
-    if (!pat) return;
-
-    // Compute pattern offset so it aligns with the tile grid
-    const tileWorld = this.tileToWorld(tileX, tileY);
-    const offsetX = (tileWorld.x - TILE_WIDTH / 2) - originX;
-    const offsetY = (tileWorld.y - TILE_HEIGHT / 2) - originY;
-    pat.setTransform(new DOMMatrix().translateSelf(offsetX, offsetY));
-
-    // Path: two straight outer edges (a→b→c) + one quadratic bezier curve
-    // back to a, using d (vertex center) as control point for smooth rounding
-    const ax = a.x - originX, ay = a.y - originY;
-    const bx = b.x - originX, by = b.y - originY;
-    const cx2 = c.x - originX, cy2 = c.y - originY;
-    const dx = d.x - originX, dy = d.y - originY;
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(ax, ay);
-    ctx.lineTo(bx, by);
-    ctx.lineTo(cx2, cy2);
-    ctx.quadraticCurveTo(dx, dy, ax, ay);
-    ctx.closePath();
-    ctx.clip();
-    ctx.fillStyle = pat;
-    ctx.fill();
-    ctx.restore();
   }
 
   loadFromData(data: CourseData): void {
