@@ -69,21 +69,11 @@ export class GuestPlayer {
     this.state = GuestState.WALKING_TO_TEE;
   }
 
-  /** Called by GuestPair to give this player their turn. */
+  /** Called by GuestPair to give this player their turn (start aiming). */
   activate(): void {
     if (this.state !== GuestState.WAITING) return;
-
-    if (!this.hasTeedOff) {
-      // At tee, ready to shoot
-      this.aimTimer = 1500 + Math.random() * 1500;
-      this.state = GuestState.AIMING;
-    } else {
-      // Walk to ball, then wait again (GuestPair will activate for aiming)
-      const ballPos = this.ballPhysics.getGroundPosition();
-      this.targetX = ballPos.x;
-      this.targetY = ballPos.y;
-      this.state = GuestState.WALKING_TO_BALL;
-    }
+    this.aimTimer = 1500 + Math.random() * 1500;
+    this.state = GuestState.AIMING;
   }
 
   /** Called by GuestPair after player arrived at ball to start aiming. */
@@ -123,9 +113,8 @@ export class GuestPlayer {
         // Wait at tee for GuestPair to give turn
         this.state = GuestState.WAITING;
       } else {
-        // Arrived at ball — start aiming immediately
-        this.aimTimer = 1500 + Math.random() * 1500;
-        this.state = GuestState.AIMING;
+        // Arrived at ball — wait for GuestPair to activate aiming
+        this.state = GuestState.WAITING;
       }
       return;
     }
@@ -163,8 +152,11 @@ export class GuestPlayer {
         return;
       }
 
-      // Go to WAITING — GuestPair will decide who plays next
-      this.state = GuestState.WAITING;
+      // Auto-walk to ball and wait there
+      const ballPos = this.ballPhysics.getGroundPosition();
+      this.targetX = ballPos.x;
+      this.targetY = ballPos.y;
+      this.state = GuestState.WALKING_TO_BALL;
     }
   }
 
@@ -242,6 +234,10 @@ export class GuestPlayer {
 
   isWaiting(): boolean {
     return this.state === GuestState.WAITING;
+  }
+
+  isAiming(): boolean {
+    return this.state === GuestState.AIMING;
   }
 
   isBallFlying(): boolean {
