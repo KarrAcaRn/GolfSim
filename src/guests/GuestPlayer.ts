@@ -13,6 +13,7 @@ const MAX_GUEST_STROKES = 10;
 export enum GuestState {
   IDLE = 'idle',
   WALKING_TO_TEE = 'walking_to_tee',
+  WAITING = 'waiting',
   AIMING = 'aiming',
   BALL_FLYING = 'ball_flying',
   WALKING_TO_BALL = 'walking_to_ball',
@@ -31,6 +32,7 @@ export class GuestPlayer {
   private aimTimer = 0;
   private bobTimer = 0;
   private strokes = 0;
+  private hasTeedOff = false;
 
   constructor(scene: Phaser.Scene, isoMap: IsometricMap, tint: number) {
     this.scene = scene;
@@ -54,17 +56,41 @@ export class GuestPlayer {
   startHole(hole: HoleData): void {
     this.currentHole = hole;
     this.strokes = 0;
+    this.hasTeedOff = false;
     this.ballPhysics.resetStrokeCount();
 
     const teeWorld = this.isoMap.tileToWorld(hole.teePosition.tileX, hole.teePosition.tileY);
 
-    // Start walking from an offset position
     this.sprite.setPosition(teeWorld.x - 80 + Math.random() * 40, teeWorld.y - 60 + Math.random() * 40);
     this.sprite.setVisible(true);
 
     this.targetX = teeWorld.x;
     this.targetY = teeWorld.y;
     this.state = GuestState.WALKING_TO_TEE;
+  }
+
+  /** Called by GuestPair to give this player their turn. */
+  activate(): void {
+    if (this.state !== GuestState.WAITING) return;
+
+    if (!this.hasTeedOff) {
+      // At tee, ready to shoot
+      this.aimTimer = 1500 + Math.random() * 1500;
+      this.state = GuestState.AIMING;
+    } else {
+      // Walk to ball, then wait again (GuestPair will activate for aiming)
+      const ballPos = this.ballPhysics.getGroundPosition();
+      this.targetX = ballPos.x;
+      this.targetY = ballPos.y;
+      this.state = GuestState.WALKING_TO_BALL;
+    }
+  }
+
+  /** Called by GuestPair after player arrived at ball to start aiming. */
+  startAiming(): void {
+    if (this.state !== GuestState.WAITING) return;
+    this.aimTimer = 1500 + Math.random() * 1500;
+    this.state = GuestState.AIMING;
   }
 
   update(delta: number): void {
@@ -96,8 +122,8 @@ export class GuestPlayer {
         this.ballPhysics.getBall()?.setVisible(true);
       }
 
-      this.aimTimer = 1500 + Math.random() * 1500;
-      this.state = GuestState.AIMING;
+      // Always go to WAITING — GuestPair decides when to activate
+      this.state = GuestState.WAITING;
       return;
     }
 
@@ -127,22 +153,15 @@ export class GuestPlayer {
         return;
       }
 
-      const ballPos = this.ballPhysics.getGroundPosition();
-      const flagWorld = this.isoMap.tileToWorld(
-        this.currentHole.flagPosition.tileX,
-        this.currentHole.flagPosition.tileY,
-      );
-
-      const dist = Phaser.Math.Distance.Between(ballPos.x, ballPos.y, flagWorld.x, flagWorld.y);
+      const dist = this.getDistanceToFlag();
 
       if (dist < HOLE_SINK_RADIUS || this.strokes >= MAX_GUEST_STROKES) {
         this.finishHole();
         return;
       }
 
-      this.targetX = ballPos.x;
-      this.targetY = ballPos.y;
-      this.state = GuestState.WALKING_TO_BALL;
+      // Go to WAITING — GuestPair will decide who plays next
+      this.state = GuestState.WAITING;
     }
   }
 
@@ -168,29 +187,25 @@ export class GuestPlayer {
     const ballTile = this.isoMap.worldToTile(ballPos.x, ballPos.y);
     const tileType = this.isoMap.getTileAt(ballTile.tileX, ballTile.tileY);
 
-    // Pick club based on distance and terrain
     let clubIndex: number;
     if (tileType === TileType.GREEN || distance <= 60) {
-      clubIndex = 4; // Putter
+      clubIndex = 4;
     } else if (tileType === TileType.TEE && distance > 400) {
-      clubIndex = 0; // Driver
+      clubIndex = 0;
     } else if (distance > 300) {
-      clubIndex = 1; // Wood
+      clubIndex = 1;
     } else if (distance > 150) {
-      clubIndex = 2; // Iron
+      clubIndex = 2;
     } else {
-      clubIndex = 3; // Sand Wedge
+      clubIndex = 3;
     }
 
     const club = CLUBS[clubIndex];
-
-    // Angle to flag with random variance
     const baseAngle = Math.atan2(dy, dx);
     const maxVariance = tileType === TileType.GREEN ? 5 : 15;
     const variance = Phaser.Math.DegToRad((Math.random() - 0.5) * 2 * maxVariance);
     const angle = baseAngle + variance;
 
-    // Power: 80-100% of distance, clamped to club range
     const power = Phaser.Math.Clamp(
       distance * (0.8 + Math.random() * 0.2),
       club.minPower,
@@ -199,11 +214,39 @@ export class GuestPlayer {
 
     this.ballPhysics.shoot(angle, power, club.loftDegrees);
     this.strokes++;
+    this.hasTeedOff = true;
     this.state = GuestState.BALL_FLYING;
+  }
+
+  /** Distance from ball to flag (used by GuestPair for turn order). */
+  getDistanceToFlag(): number {
+    if (!this.currentHole) return 0;
+    const ballPos = this.ballPhysics.getGroundPosition();
+    const flagWorld = this.isoMap.tileToWorld(
+      this.currentHole.flagPosition.tileX,
+      this.currentHole.flagPosition.tileY,
+    );
+    return Phaser.Math.Distance.Between(ballPos.x, ballPos.y, flagWorld.x, flagWorld.y);
+  }
+
+  getStrokes(): number {
+    return this.strokes;
   }
 
   isHoled(): boolean {
     return this.state === GuestState.HOLED;
+  }
+
+  isWaiting(): boolean {
+    return this.state === GuestState.WAITING;
+  }
+
+  isBallFlying(): boolean {
+    return this.state === GuestState.BALL_FLYING;
+  }
+
+  needsTeeShot(): boolean {
+    return !this.hasTeedOff;
   }
 
   destroy(): void {
