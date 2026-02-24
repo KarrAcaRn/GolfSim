@@ -30,7 +30,6 @@ export class AimingSystem {
   private currentAngle: number = 0;
   private currentPower: number = 0;
   private hasValidAim: boolean = false;
-  private ignoreNextClick: boolean = false;
 
   constructor(scene: Phaser.Scene, ballPhysics: BallPhysics, isoMap: IsometricMap, shotPanel: ShotPanel) {
     this.scene = scene;
@@ -74,10 +73,6 @@ export class AimingSystem {
       }
     });
 
-    // Prevent shot when clicking on guest sprites
-    EventBus.on('guest-selected', () => {
-      this.ignoreNextClick = true;
-    });
   }
 
   get currentClub(): Club {
@@ -157,17 +152,9 @@ export class AimingSystem {
     if (!this.hasValidAim) return;
     if (pointer.rightButtonDown() || pointer.middleButtonDown()) return;
 
-    // Don't shoot when clicking on a guest (flag is set by EventBus listener)
-    if (this.ignoreNextClick) {
-      this.ignoreNextClick = false;
-      return;
-    }
-
-    // Check if clicking on UI elements (ShotPanel area - bottom right)
-    const { width, height } = this.scene.scale;
-    const panelX = width - 210;
-    const panelY = height - 250;
-    if (pointer.x >= panelX && pointer.y >= panelY) return; // Click is on panel
+    // Don't shoot when clicking on any interactive object (UI buttons, guests, etc.)
+    const hitObjects = this.scene.input.hitTestPointer(pointer);
+    if (hitObjects.length > 0) return;
 
     const angle = this.currentAngle;
     const power = this.currentPower;
@@ -381,7 +368,6 @@ export class AimingSystem {
     this.scene.input.off('wheel', this.onWheel, this);
     EventBus.off('club-changed');
     EventBus.off('player-arrived');
-    EventBus.off('guest-selected');
     this.aimGraphics.destroy();
     this.trajectoryGraphics.destroy();
     this.powerText.destroy();
