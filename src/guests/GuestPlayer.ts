@@ -189,52 +189,106 @@ export class GuestPlayer {
 
     const dx = flagWorld.x - ballPos.x;
     const dy = flagWorld.y - ballPos.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
+    const baseAngle = Math.atan2(dy, dx);
 
     const ballTile = this.isoMap.worldToTile(ballPos.x, ballPos.y);
     const tileType = this.isoMap.getTileAt(ballTile.tileX, ballTile.tileY);
 
-    // --- Club selection (unchanged logic) ---
-    let clubIndex: number;
-    if (tileType === TileType.GREEN || distance <= 60) {
-      clubIndex = 4;
-    } else if (tileType === TileType.TEE && distance > 400) {
-      clubIndex = 0;
-    } else if (distance > 300) {
-      clubIndex = 1;
-    } else if (distance > 150) {
-      clubIndex = 2;
-    } else {
-      clubIndex = 3;
+    // --- Evaluate all club + power combos via trajectory simulation ---
+    let bestClubIndex = 2;
+    let bestPower = 100;
+    let bestScore = -Infinity;
+
+    for (let ci = 0; ci < CLUBS.length; ci++) {
+      const club = CLUBS[ci];
+
+      // Skip driver if not on tee
+      if (club.teeOnly && tileType !== TileType.TEE) continue;
+
+      // Skill-based ideal power range: better skill = more of the club's range usable
+      const clubSkill = this.getClubSkill(club.id);
+      const skillFactor = clubSkill / 100;
+      const idealMid = club.minPower + (club.maxPower - club.minPower) * (0.4 + 0.3 * skillFactor);
+
+      const steps = 10;
+      for (let s = 0; s <= steps; s++) {
+        const power = club.minPower + (club.maxPower - club.minPower) * (s / steps);
+
+        // Simulate trajectory to find actual landing position
+        const points = this.ballPhysics.simulateTrajectory(
+          ballPos.x, ballPos.y, baseAngle, power, club.loftDegrees, 0, 0
+        );
+        if (points.length === 0) continue;
+
+        const lastPt = points[points.length - 1];
+        const landDist = Phaser.Math.Distance.Between(lastPt.x, lastPt.y, flagWorld.x, flagWorld.y);
+
+        // Landing terrain score
+        const landTile = this.isoMap.worldToTile(lastPt.x, lastPt.y);
+        const landTerrain = this.isoMap.getTileAt(landTile.tileX, landTile.tileY);
+        const terrainBonus = this.landingTerrainScore(landTerrain) * 40;
+
+        // Distance penalty (closer to flag = better)
+        const distScore = -landDist;
+
+        // Prefer power near skill-based ideal (player is most consistent there)
+        const idealDev = Math.abs(power - idealMid) / (club.maxPower - club.minPower);
+        const idealBonus = (1 - idealDev) * clubSkill * 0.15;
+
+        const score = distScore + terrainBonus + idealBonus;
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestClubIndex = ci;
+          bestPower = power;
+        }
+      }
     }
 
-    const club = CLUBS[clubIndex];
+    // --- Apply skill-based variance to the chosen shot ---
+    const club = CLUBS[bestClubIndex];
     const clubSkill = this.getClubSkill(club.id);
 
-    // --- Angle with skill-based variance ---
-    const baseAngle = Math.atan2(dy, dx);
+    // Angle variance
     const combinedAccuracy = (this.skills.accuracy + clubSkill) / 2;
     const baseMaxAngle = tileType === TileType.GREEN ? 10 : 30;
     const maxAngle = baseMaxAngle * (1 - combinedAccuracy / 100);
     const variance = Phaser.Math.DegToRad((Math.random() - 0.5) * 2 * maxAngle);
     const angle = baseAngle + variance;
 
-    // --- Power with skill-based deviation ---
+    // Power variance
     const combinedStrength = (this.skills.strength + clubSkill) / 2;
     const maxPowerDeviation = 0.4 * (1 - combinedStrength / 100);
     const power = Phaser.Math.Clamp(
-      distance * (1 - maxPowerDeviation + Math.random() * maxPowerDeviation * 2),
+      bestPower * (1 - maxPowerDeviation + Math.random() * maxPowerDeviation * 2),
       club.minPower,
       club.maxPower,
     );
 
-    // --- Spin decision based on landing zone terrain ---
+    // Spin decision based on landing zone terrain
     const { spinDirection, spinAngle } = this.decideSpin(angle, power, club);
 
     this.ballPhysics.shoot(angle, power, club.loftDegrees, spinDirection, spinAngle);
     this.strokes++;
     this.hasTeedOff = true;
     this.state = GuestState.BALL_FLYING;
+  }
+
+  /**
+   * Score landing terrain for club selection.
+   * GREEN/FAIRWAY preferred, WATER heavily penalized.
+   */
+  private landingTerrainScore(tile: TileType): number {
+    switch (tile) {
+      case TileType.GREEN: return 3;
+      case TileType.FAIRWAY: return 2;
+      case TileType.TEE: return 1;
+      case TileType.GRASS: return 0;
+      case TileType.ROUGH: return -1;
+      case TileType.SAND: return -3;
+      case TileType.WATER: return -100;
+      default: return -1;
+    }
   }
 
   private getClubSkill(clubId: string): number {
