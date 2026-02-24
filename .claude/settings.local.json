@@ -32,7 +32,9 @@
       "WebFetch(domain:excaliburjs.com)",
       "Bash(python3:*)",
       "Bash(node -e:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(/srv/projects/GolfSim/src/guests/GuestPair.ts:*)",
+      "Bash(/srv/projects/GolfSim/src/guests/GuestManager.ts:*)"
     ]
   }
 }

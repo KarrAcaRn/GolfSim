@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { IsometricMap } from '../systems/IsometricMap';
 import { GuestPair } from './GuestPair';
 import { HoleData } from '../models/HoleData';
+import { MatchScoreSheet } from '../models/MatchScoreSheet';
 
 const PAIR_TINTS = [0xff8888, 0x8888ff];
 
@@ -35,6 +36,10 @@ export class GuestManager {
     for (const pair of this.pairs) {
       pair.update(delta);
     }
+  }
+
+  getScoreSheets(): MatchScoreSheet[] {
+    return this.pairs.map(pair => pair.getScoreSheet());
   }
 
   destroy(): void {

@@ -1,19 +1,7 @@
 import { IsometricMap } from '../systems/IsometricMap';
 import { GuestPlayer } from './GuestPlayer';
 import { HoleData } from '../models/HoleData';
-
-interface HoleResult {
-  strokesA: number;
-  strokesB: number;
-  winner: 'A' | 'B' | 'tie';
-}
-
-export interface MatchResult {
-  holeResults: HoleResult[];
-  winsA: number;
-  winsB: number;
-  ties: number;
-}
+import { MatchScoreSheet, HoleScore, createEmptyScoreSheet } from '../models/MatchScoreSheet';
 
 enum PairPhase {
   WALKING_TO_TEE,
@@ -32,7 +20,7 @@ export class GuestPair {
   private phase: PairPhase = PairPhase.WALKING_TO_TEE;
   private teeOrder: 'A' | 'B' = 'A';
   private holeCompleteTimer = 0;
-  private matchResult: MatchResult = { holeResults: [], winsA: 0, winsB: 0, ties: 0 };
+  private scoreSheet: MatchScoreSheet = createEmptyScoreSheet();
 
   constructor(scene: Phaser.Scene, isoMap: IsometricMap, tint: number, holes: HoleData[], startHoleIndex: number) {
     this.holes = holes;
@@ -167,24 +155,43 @@ export class GuestPair {
   }
 
   private recordHoleResult(): void {
+    const hole = this.holes[this.currentHoleIndex];
     const strokesA = this.playerA.getStrokes();
     const strokesB = this.playerB.getStrokes();
+    const scoreA = strokesA - hole.par;
+    const scoreB = strokesB - hole.par;
+
     let winner: 'A' | 'B' | 'tie';
     if (strokesA < strokesB) {
       winner = 'A';
-      this.matchResult.winsA++;
+      this.scoreSheet.holesWonA++;
     } else if (strokesB < strokesA) {
       winner = 'B';
-      this.matchResult.winsB++;
+      this.scoreSheet.holesWonB++;
     } else {
       winner = 'tie';
-      this.matchResult.ties++;
+      this.scoreSheet.tiedHoles++;
     }
-    this.matchResult.holeResults.push({ strokesA, strokesB, winner });
+
+    const holeScore: HoleScore = {
+      holeIndex: this.currentHoleIndex,
+      par: hole.par,
+      strokesA,
+      strokesB,
+      scoreA,
+      scoreB,
+      winner,
+    };
+
+    this.scoreSheet.holeScores.push(holeScore);
+    this.scoreSheet.totalStrokesA += strokesA;
+    this.scoreSheet.totalStrokesB += strokesB;
+    this.scoreSheet.totalScoreA += scoreA;
+    this.scoreSheet.totalScoreB += scoreB;
   }
 
-  getMatchResult(): MatchResult {
-    return this.matchResult;
+  getScoreSheet(): MatchScoreSheet {
+    return this.scoreSheet;
   }
 
   destroy(): void {
