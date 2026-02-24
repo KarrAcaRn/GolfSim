@@ -120,10 +120,13 @@ export class GuestPlayer {
       if (this.state === GuestState.WALKING_TO_TEE) {
         this.ballPhysics.moveBallTo(this.targetX, this.targetY);
         this.ballPhysics.getBall()?.setVisible(true);
+        // Wait at tee for GuestPair to give turn
+        this.state = GuestState.WAITING;
+      } else {
+        // Arrived at ball — start aiming immediately
+        this.aimTimer = 1500 + Math.random() * 1500;
+        this.state = GuestState.AIMING;
       }
-
-      // Always go to WAITING — GuestPair decides when to activate
-      this.state = GuestState.WAITING;
       return;
     }
 
