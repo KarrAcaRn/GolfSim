@@ -129,6 +129,12 @@ export class EditorScene extends Phaser.Scene {
       this.guestManager.start(this.holePlacer.getHoles());
     });
 
+    EventBus.on('editor-back', () => {
+      const courseData = this.getCourseData();
+      this.scene.stop('UI');
+      this.scene.start('Neutral', { courseData });
+    });
+
     EventBus.on('editor-play', () => {
       const holes = this.holePlacer.getHoles();
       if (holes.length === 0) {

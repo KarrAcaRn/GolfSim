@@ -61,5 +61,9 @@
   "info.sandWedge": "Sandwedge",
   "info.putter": "Putter",
   "info.leftSpin": "Links-Spin",
-  "info.rightSpin": "Rechts-Spin"
+  "info.rightSpin": "Rechts-Spin",
+  "neutral.build": "Bauen",
+  "neutral.play": "Spielen",
+  "neutral.back": "Zurueck",
+  "neutral.needHoles": "Platziere zuerst mindestens ein Loch!"
 }

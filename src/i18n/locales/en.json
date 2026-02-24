@@ -61,5 +61,9 @@
   "info.sandWedge": "Sand Wedge",
   "info.putter": "Putter",
   "info.leftSpin": "Left Spin",
-  "info.rightSpin": "Right Spin"
+  "info.rightSpin": "Right Spin",
+  "neutral.build": "Build",
+  "neutral.play": "Play",
+  "neutral.back": "Back",
+  "neutral.needHoles": "Place at least one hole first!"
 }

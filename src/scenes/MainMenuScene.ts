@@ -44,7 +44,7 @@ export class MainMenuScene extends Phaser.Scene {
       fontSize: '16px',
       bgColor: 0x2d7a2d,
       hoverColor: 0x3d9a3d,
-      onClick: () => this.scene.start('Editor'),
+      onClick: () => this.scene.start('Neutral'),
     });
     this.buttons.push(newBtn);
 
@@ -63,7 +63,7 @@ export class MainMenuScene extends Phaser.Scene {
         if (courses.length === 0) return;
         const courseData = CourseStorage.load(courses[0]);
         if (courseData) {
-          this.scene.start('Editor', { courseData });
+          this.scene.start('Neutral', { courseData });
         }
       },
     });

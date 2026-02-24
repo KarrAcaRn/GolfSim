@@ -132,7 +132,7 @@ export class PlayScene extends Phaser.Scene {
     };
 
     // Back to editor button
-    const backBtn = this.add.text(10, 10, t('play.backToEditor'), {
+    const backBtn = this.add.text(10, 10, t('neutral.back'), {
       fontSize: '14px',
       color: '#ffffff',
       backgroundColor: '#444444',
@@ -140,7 +140,7 @@ export class PlayScene extends Phaser.Scene {
     }).setScrollFactor(0).setDepth(2000).setInteractive({ useHandCursor: true });
 
     backBtn.on('pointerdown', () => {
-      this.scene.start('Editor', { courseData: this.courseData });
+      this.scene.start('Neutral', { courseData: this.courseData });
     });
 
     backBtn.on('pointerover', () => backBtn.setBackgroundColor('#666666'));
@@ -259,7 +259,7 @@ export class PlayScene extends Phaser.Scene {
 
     // Return to editor after 5 seconds
     this.time.delayedCall(5000, () => {
-      this.scene.start('Editor', { courseData: this.courseData });
+      this.scene.start('Neutral', { courseData: this.courseData });
     });
   }
 

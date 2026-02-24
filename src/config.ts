@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { BootScene } from './scenes/BootScene';
 import { PreloadScene } from './scenes/PreloadScene';
 import { MainMenuScene } from './scenes/MainMenuScene';
+import { NeutralScene } from './scenes/NeutralScene';
 import { EditorScene } from './scenes/EditorScene';
 import { PlayScene } from './scenes/PlayScene';
 import { UIScene } from './scenes/UIScene';
@@ -26,7 +27,7 @@ export const GAME_CONFIG: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [BootScene, PreloadScene, MainMenuScene, EditorScene, PlayScene, UIScene, PauseScene],
+  scene: [BootScene, PreloadScene, MainMenuScene, NeutralScene, EditorScene, PlayScene, UIScene, PauseScene],
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,

@@ -114,6 +114,23 @@ export class UIScene extends Phaser.Scene {
     playBtn.setDepth(101);
     this.buttons.push(playBtn);
 
+    y += BUTTON_HEIGHT + BUTTON_MARGIN;
+
+    // Back to Neutral button
+    const backBtn = new Button(this, {
+      x,
+      y,
+      width: TOOLBAR_WIDTH,
+      height: BUTTON_HEIGHT,
+      text: t('neutral.back' as any),
+      fontSize: '11px',
+      bgColor: 0x663333,
+      hoverColor: 0x884444,
+      onClick: () => EventBus.emit('editor-back'),
+    });
+    backBtn.setDepth(101);
+    this.buttons.push(backBtn);
+
     // Info text at bottom
     this.infoText = this.add.text(TOOLBAR_WIDTH / 2 + 4, height - 20, '', {
       fontSize: '10px',
