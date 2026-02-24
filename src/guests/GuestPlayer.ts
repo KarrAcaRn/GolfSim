@@ -6,6 +6,7 @@ import { CLUBS } from '../models/Club';
 import { TileType } from '../models/TileTypes';
 import { GuestSkills } from '../models/GuestSkills';
 import { HOLE_SINK_RADIUS } from '../utils/Constants';
+import { EventBus } from '../utils/EventBus';
 
 const WALK_SPEED = 100;
 const ARRIVE_THRESHOLD = 5;
@@ -44,6 +45,10 @@ export class GuestPlayer {
     this.sprite = scene.add.sprite(0, 0, 'player');
     this.sprite.setTint(tint);
     this.sprite.setDepth(840);
+    this.sprite.setInteractive({ useHandCursor: true, pixelPerfect: false });
+    this.sprite.on('pointerdown', () => {
+      EventBus.emit('guest-selected', this.skills);
+    });
     this.sprite.setVisible(false);
 
     this.ballPhysics = new BallPhysics(scene, isoMap, true);
@@ -54,6 +59,10 @@ export class GuestPlayer {
       ball.setTint(tint);
       ball.setVisible(false);
     }
+  }
+
+  getSkills(): GuestSkills {
+    return this.skills;
   }
 
   startHole(hole: HoleData): void {
