@@ -19,6 +19,8 @@ export class NeutralScene extends Phaser.Scene {
   private markerSprites: Phaser.GameObjects.Image[] = [];
   private guestClickedFlag = false;
   private messageText!: Phaser.GameObjects.Text;
+  private buildBtn!: Phaser.GameObjects.Text;
+  private playBtn!: Phaser.GameObjects.Text;
 
   constructor() {
     super({ key: 'Neutral' });
@@ -93,6 +95,9 @@ export class NeutralScene extends Phaser.Scene {
       }
       this.guestClickedFlag = false;
     });
+
+    // UI camera so buttons/message don't scale with zoom
+    this.setupUICamera();
   }
 
   update(_time: number, delta: number): void {
@@ -106,6 +111,30 @@ export class NeutralScene extends Phaser.Scene {
     this.markerSprites.forEach(s => s.destroy());
     this.markerSprites = [];
     EventBus.removeAllListeners();
+  }
+
+  private setupUICamera(): void {
+    const { width, height } = this.scale;
+    const uiCamera = this.cameras.add(0, 0, width, height);
+
+    const uiElements: Phaser.GameObjects.GameObject[] = [
+      this.buildBtn,
+      this.playBtn,
+      this.messageText,
+    ];
+
+    // Main camera ignores UI → they won't zoom
+    this.cameras.main.ignore(uiElements);
+
+    // UI camera ignores all world objects → no double rendering
+    for (const obj of this.children.list) {
+      if (!uiElements.includes(obj)) {
+        uiCamera.ignore(obj);
+      }
+    }
+
+    // InfoPanel creates elements dynamically — ignore from main camera
+    this.infoPanel.setMainCameraIgnore(this.cameras.main);
   }
 
   private renderHoleMarkers(): void {
@@ -126,36 +155,36 @@ export class NeutralScene extends Phaser.Scene {
 
   private createButtons(): void {
     // "Build" button
-    const buildBtn = this.add.text(10, 10, t('neutral.build'), {
+    this.buildBtn = this.add.text(10, 10, t('neutral.build'), {
       fontSize: '14px',
       color: '#ffffff',
       backgroundColor: '#444444',
       padding: { x: 8, y: 4 },
     }).setScrollFactor(0).setDepth(2000).setInteractive({ useHandCursor: true });
 
-    buildBtn.on('pointerdown', () => {
+    this.buildBtn.on('pointerdown', () => {
       this.scene.start('Editor', { courseData: this.courseData });
     });
-    buildBtn.on('pointerover', () => buildBtn.setBackgroundColor('#666666'));
-    buildBtn.on('pointerout', () => buildBtn.setBackgroundColor('#444444'));
+    this.buildBtn.on('pointerover', () => this.buildBtn.setBackgroundColor('#666666'));
+    this.buildBtn.on('pointerout', () => this.buildBtn.setBackgroundColor('#444444'));
 
     // "Play" button
-    const playBtn = this.add.text(10, 42, t('neutral.play'), {
+    this.playBtn = this.add.text(10, 42, t('neutral.play'), {
       fontSize: '14px',
       color: '#ffffff',
       backgroundColor: '#444444',
       padding: { x: 8, y: 4 },
     }).setScrollFactor(0).setDepth(2000).setInteractive({ useHandCursor: true });
 
-    playBtn.on('pointerdown', () => {
+    this.playBtn.on('pointerdown', () => {
       if (this.courseData.holes.length > 0) {
         this.scene.start('Play', { courseData: this.courseData });
       } else {
         this.showWarning();
       }
     });
-    playBtn.on('pointerover', () => playBtn.setBackgroundColor('#666666'));
-    playBtn.on('pointerout', () => playBtn.setBackgroundColor('#444444'));
+    this.playBtn.on('pointerover', () => this.playBtn.setBackgroundColor('#666666'));
+    this.playBtn.on('pointerout', () => this.playBtn.setBackgroundColor('#444444'));
   }
 
   private showWarning(): void {

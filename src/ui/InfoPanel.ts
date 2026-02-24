@@ -20,9 +20,14 @@ export class InfoPanel {
   private scene: Phaser.Scene;
   private elements: Phaser.GameObjects.GameObject[] = [];
   private visible = false;
+  private mainCamera?: Phaser.Cameras.Scene2D.Camera;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
+  }
+
+  setMainCameraIgnore(camera: Phaser.Cameras.Scene2D.Camera): void {
+    this.mainCamera = camera;
   }
 
   show(skills: GuestSkills): void {
@@ -82,6 +87,13 @@ export class InfoPanel {
         fontSize: '11px',
         color: '#ffffff',
       }).setOrigin(0, 0), this.elements, 2000);
+    }
+
+    // Hide from main camera so elements don't zoom
+    if (this.mainCamera) {
+      for (const el of this.elements) {
+        this.mainCamera.ignore(el);
+      }
     }
   }
 

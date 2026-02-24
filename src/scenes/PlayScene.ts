@@ -35,6 +35,7 @@ export class PlayScene extends Phaser.Scene {
   private guestManager!: GuestManager;
   private infoPanel!: InfoPanel;
   private guestClickedFlag = false;
+  private backBtn!: Phaser.GameObjects.Text;
 
   constructor() {
     super({ key: 'Play' });
@@ -103,6 +104,36 @@ export class PlayScene extends Phaser.Scene {
     });
 
     this.updateHUD();
+
+    // UI camera so HUD/ShotPanel/InfoPanel don't scale with zoom
+    this.setupUICamera();
+  }
+
+  private setupUICamera(): void {
+    const { width, height } = this.scale;
+    const uiCamera = this.cameras.add(0, 0, width, height);
+
+    // Collect all UI elements
+    const uiElements: Phaser.GameObjects.GameObject[] = [
+      this.hud.holeText,
+      this.hud.strokeText,
+      this.hud.messageText,
+      this.backBtn,
+      ...this.shotPanel.getElements(),
+    ];
+
+    // Main camera ignores UI → they won't zoom
+    this.cameras.main.ignore(uiElements);
+
+    // UI camera ignores all world objects → no double rendering
+    for (const obj of this.children.list) {
+      if (!uiElements.includes(obj)) {
+        uiCamera.ignore(obj);
+      }
+    }
+
+    // InfoPanel creates elements dynamically — ignore from main camera
+    this.infoPanel.setMainCameraIgnore(this.cameras.main);
   }
 
   private createHUD(): void {
@@ -131,20 +162,20 @@ export class PlayScene extends Phaser.Scene {
       }).setOrigin(0.5).setScrollFactor(0).setDepth(2001).setVisible(false),
     };
 
-    // Back to editor button
-    const backBtn = this.add.text(10, 10, t('neutral.back'), {
+    // Back button
+    this.backBtn = this.add.text(10, 10, t('neutral.back'), {
       fontSize: '14px',
       color: '#ffffff',
       backgroundColor: '#444444',
       padding: { x: 8, y: 4 },
     }).setScrollFactor(0).setDepth(2000).setInteractive({ useHandCursor: true });
 
-    backBtn.on('pointerdown', () => {
+    this.backBtn.on('pointerdown', () => {
       this.scene.start('Neutral', { courseData: this.courseData });
     });
 
-    backBtn.on('pointerover', () => backBtn.setBackgroundColor('#666666'));
-    backBtn.on('pointerout', () => backBtn.setBackgroundColor('#444444'));
+    this.backBtn.on('pointerover', () => this.backBtn.setBackgroundColor('#666666'));
+    this.backBtn.on('pointerout', () => this.backBtn.setBackgroundColor('#444444'));
   }
 
   private setupEventListeners(): void {

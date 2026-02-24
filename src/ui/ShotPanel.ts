@@ -170,6 +170,10 @@ export class ShotPanel {
     this.updateClubHighlight();
   }
 
+  getElements(): Phaser.GameObjects.GameObject[] {
+    return this.elements;
+  }
+
   destroy(): void {
     for (const el of this.elements) {
       el.destroy();
