@@ -79,13 +79,9 @@ export class GuestPair {
       return;
     }
 
-    // Wait until nobody is aiming or has a ball in flight (walking to ball is fine)
+    // Wait only if someone is aiming or has a ball in flight
     if (this.playerA.isAiming() || this.playerA.isBallFlying()) return;
     if (this.playerB.isAiming() || this.playerB.isBallFlying()) return;
-
-    // Only activate when player is WAITING (done walking)
-    if (!this.playerA.isWaiting() && !this.playerA.isHoled()) return;
-    if (!this.playerB.isWaiting() && !this.playerB.isHoled()) return;
 
     this.activateNextPlayer();
   }
