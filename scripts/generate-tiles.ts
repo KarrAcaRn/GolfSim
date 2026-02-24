@@ -245,7 +245,14 @@ function drawSandPattern(
 }
 
 /**
- * WATER – wavy ripple lines with white specular highlights
+ * WATER – pixel-art pond/lake with depth gradient, layered ripples,
+ * foam highlights and subtle dither for a retro look.
+ *
+ * Layers (bottom to top):
+ *  1. Depth gradient  – darker in center, lighter towards edges
+ *  2. Dithered noise  – subtle 2-tone pixel noise for texture
+ *  3. Wave ripples    – 6 sinusoidal lines in two shades
+ *  4. Specular pixels – bright white/cyan reflection dots
  */
 function drawWaterPattern(
   ctx: CanvasRenderingContext2D,
@@ -254,59 +261,103 @@ function drawWaterPattern(
   baseColor: number,
   rand: () => number
 ): void {
-  const waveCount = 4;
+  const imageData = ctx.getImageData(0, 0, TILE_WIDTH, TILE_HEIGHT);
+  const [bR, bG, bB] = hexToRgb(baseColor);
 
+  // Darker and lighter palette shades
+  const deepColor  = hexToRgb(adjustColor(baseColor, -30));  // deep center
+  const shallowColor = hexToRgb(adjustColor(baseColor, 15)); // shallow edge
+  const rippleLight = hexToRgb(adjustColor(baseColor, 40));
+  const rippleDark  = hexToRgb(adjustColor(baseColor, -12));
+
+  // --- Layer 1: Depth gradient (darker center, lighter edges) ---
+  for (let py = 0; py < TILE_HEIGHT; py++) {
+    for (let px = 0; px < TILE_WIDTH; px++) {
+      if (!isInsideDiamond(px, py, halfW, halfH)) continue;
+
+      // Distance from center (0 = center, 1 = edge), Manhattan-ish
+      const edgeDist = Math.abs(px - halfW) / halfW + Math.abs(py - halfH) / halfH;
+      const t = Math.min(1, edgeDist * 1.1); // 0=center, 1=edge
+
+      const r = Math.round(deepColor[0] + (shallowColor[0] - deepColor[0]) * t);
+      const g = Math.round(deepColor[1] + (shallowColor[1] - deepColor[1]) * t);
+      const b = Math.round(deepColor[2] + (shallowColor[2] - deepColor[2]) * t);
+      setPixel(imageData, px, py, r, g, b, 255);
+    }
+  }
+
+  // --- Layer 2: Dithered noise for pixel-art texture ---
+  for (let py = 0; py < TILE_HEIGHT; py++) {
+    for (let px = 0; px < TILE_WIDTH; px++) {
+      if (!isInsideDiamond(px, py, halfW, halfH)) continue;
+
+      // Checkerboard dither: every other pixel gets a slight shift
+      if ((px + py) % 2 === 0) {
+        const shift = Math.round((rand() - 0.5) * 12);
+        const idx = (py * TILE_WIDTH + px) * 4;
+        const cr = Math.min(255, Math.max(0, imageData.data[idx]     + shift));
+        const cg = Math.min(255, Math.max(0, imageData.data[idx + 1] + shift));
+        const cb = Math.min(255, Math.max(0, imageData.data[idx + 2] + shift));
+        setPixel(imageData, px, py, cr, cg, cb, 255);
+      }
+    }
+  }
+
+  // --- Layer 3: Wave ripple lines (6 waves, two-tone) ---
+  const waveCount = 6;
   for (let i = 0; i < waveCount; i++) {
-    const yBase = 4 + (TILE_HEIGHT - 8) * (i / (waveCount - 1));
-    const amplitude = 1.5;
-    const frequency = 0.38 + rand() * 0.12;
+    const yBase = 3 + (TILE_HEIGHT - 6) * (i / (waveCount - 1));
+    const amplitude = 1.0 + rand() * 0.8;
+    const frequency = 0.3 + rand() * 0.15;
     const phase = rand() * Math.PI * 2;
 
-    // Main wave line (lighter blue)
-    const waveColor = adjustColor(baseColor, 35);
-    ctx.strokeStyle = colorToRgba(waveColor, 0.55);
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    let firstPoint = true;
-    for (let step = 0; step <= 64; step++) {
-      const x = (step / 64) * TILE_WIDTH;
-      const y = yBase + Math.sin(x * frequency + phase) * amplitude;
-      if (!isInsideDiamond(x, y, halfW, halfH)) {
-        firstPoint = true;
-        continue;
-      }
-      if (firstPoint) { ctx.moveTo(x, y); firstPoint = false; }
-      else { ctx.lineTo(x, y); }
-    }
-    ctx.stroke();
+    for (let step = 0; step < TILE_WIDTH; step++) {
+      const x = step;
+      const waveY = yBase + Math.sin(x * frequency + phase) * amplitude;
+      const wy = Math.round(waveY);
 
-    // Secondary shadow wave just below (slightly darker)
-    const shadowWave = adjustColor(baseColor, -15);
-    ctx.strokeStyle = colorToRgba(shadowWave, 0.25);
-    ctx.beginPath();
-    firstPoint = true;
-    for (let step = 0; step <= 64; step++) {
-      const x = (step / 64) * TILE_WIDTH;
-      const y = yBase + 1.5 + Math.sin(x * frequency + phase) * amplitude;
-      if (!isInsideDiamond(x, y, halfW, halfH)) {
-        firstPoint = true;
-        continue;
+      if (!isInsideDiamond(x, wy, halfW, halfH)) continue;
+
+      // Light crest pixel
+      setPixel(imageData, x, wy, rippleLight[0], rippleLight[1], rippleLight[2], 100 + Math.round(rand() * 40));
+
+      // Dark trough pixel 1-2px below
+      const troughY = wy + 1;
+      if (troughY < TILE_HEIGHT && isInsideDiamond(x, troughY, halfW, halfH)) {
+        setPixel(imageData, x, troughY, rippleDark[0], rippleDark[1], rippleDark[2], 70);
       }
-      if (firstPoint) { ctx.moveTo(x, y); firstPoint = false; }
-      else { ctx.lineTo(x, y); }
     }
-    ctx.stroke();
   }
 
-  // White specular highlight dots scattered (5-7 pixels)
-  const specCount = Math.floor(rand() * 3) + 5;
-  const imageData = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
+  // --- Layer 4: Specular highlights (bright reflection dots) ---
+  const specCount = 8 + Math.floor(rand() * 5);
   for (let i = 0; i < specCount; i++) {
-    const px = rand() * TILE_WIDTH;
-    const py = rand() * TILE_HEIGHT;
+    const px = Math.floor(rand() * TILE_WIDTH);
+    const py = Math.floor(rand() * TILE_HEIGHT);
     if (!isInsideDiamond(px, py, halfW, halfH)) continue;
-    setPixel(imageData, Math.floor(px), Math.floor(py), 255, 255, 255, 160);
+
+    const bright = 200 + Math.floor(rand() * 55);
+    // Slightly cyan-tinted highlights
+    setPixel(imageData, px, py, bright, 255, 255, 140 + Math.floor(rand() * 60));
+
+    // Occasionally a 2px cluster for larger sparkle
+    if (rand() > 0.6) {
+      const nx = px + (rand() > 0.5 ? 1 : -1);
+      if (nx >= 0 && nx < TILE_WIDTH && isInsideDiamond(nx, py, halfW, halfH)) {
+        setPixel(imageData, nx, py, bright, 255, 255, 80);
+      }
+    }
   }
+
+  // --- Small dark spots for underwater shadow hints ---
+  const shadowCount = 3 + Math.floor(rand() * 3);
+  for (let i = 0; i < shadowCount; i++) {
+    const sx = Math.floor(halfW + (rand() - 0.5) * halfW * 0.8);
+    const sy = Math.floor(halfH + (rand() - 0.5) * halfH * 0.6);
+    if (!isInsideDiamond(sx, sy, halfW, halfH)) continue;
+    setPixel(imageData, sx, sy, deepColor[0] - 10, deepColor[1] - 10, deepColor[2], 120);
+  }
+
   ctx.putImageData(imageData, 0, 0);
 }
 
