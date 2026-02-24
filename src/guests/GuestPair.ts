@@ -2,6 +2,7 @@ import { IsometricMap } from '../systems/IsometricMap';
 import { GuestPlayer } from './GuestPlayer';
 import { HoleData } from '../models/HoleData';
 import { MatchScoreSheet, HoleScore, createEmptyScoreSheet } from '../models/MatchScoreSheet';
+import { generateGuestSkills, randomSkillTier } from '../models/GuestSkills';
 
 enum PairPhase {
   WALKING_TO_TEE,
@@ -24,8 +25,10 @@ export class GuestPair {
     this.holes = holes;
     this.currentHoleIndex = startHoleIndex % holes.length;
 
-    this.playerA = new GuestPlayer(scene, isoMap, tint);
-    this.playerB = new GuestPlayer(scene, isoMap, this.lightenTint(tint));
+    const skillsA = generateGuestSkills(randomSkillTier());
+    const skillsB = generateGuestSkills(randomSkillTier());
+    this.playerA = new GuestPlayer(scene, isoMap, tint, skillsA);
+    this.playerB = new GuestPlayer(scene, isoMap, this.lightenTint(tint), skillsB);
 
     this.startCurrentHole();
   }

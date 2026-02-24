@@ -4,6 +4,7 @@ import { BallPhysics } from '../systems/BallPhysics';
 import { HoleData } from '../models/HoleData';
 import { CLUBS } from '../models/Club';
 import { TileType } from '../models/TileTypes';
+import { GuestSkills } from '../models/GuestSkills';
 import { HOLE_SINK_RADIUS } from '../utils/Constants';
 
 const WALK_SPEED = 100;
@@ -33,10 +34,12 @@ export class GuestPlayer {
   private bobTimer = 0;
   private strokes = 0;
   private hasTeedOff = false;
+  private skills: GuestSkills;
 
-  constructor(scene: Phaser.Scene, isoMap: IsometricMap, tint: number) {
+  constructor(scene: Phaser.Scene, isoMap: IsometricMap, tint: number, skills: GuestSkills) {
     this.scene = scene;
     this.isoMap = isoMap;
+    this.skills = skills;
 
     this.sprite = scene.add.sprite(0, 0, 'player');
     this.sprite.setTint(tint);
@@ -182,6 +185,7 @@ export class GuestPlayer {
     const ballTile = this.isoMap.worldToTile(ballPos.x, ballPos.y);
     const tileType = this.isoMap.getTileAt(ballTile.tileX, ballTile.tileY);
 
+    // --- Club selection (unchanged logic) ---
     let clubIndex: number;
     if (tileType === TileType.GREEN || distance <= 60) {
       clubIndex = 4;
@@ -196,21 +200,105 @@ export class GuestPlayer {
     }
 
     const club = CLUBS[clubIndex];
+    const clubSkill = this.getClubSkill(club.id);
+
+    // --- Angle with skill-based variance ---
     const baseAngle = Math.atan2(dy, dx);
-    const maxVariance = tileType === TileType.GREEN ? 5 : 15;
-    const variance = Phaser.Math.DegToRad((Math.random() - 0.5) * 2 * maxVariance);
+    const combinedAccuracy = (this.skills.accuracy + clubSkill) / 2;
+    const baseMaxAngle = tileType === TileType.GREEN ? 10 : 30;
+    const maxAngle = baseMaxAngle * (1 - combinedAccuracy / 100);
+    const variance = Phaser.Math.DegToRad((Math.random() - 0.5) * 2 * maxAngle);
     const angle = baseAngle + variance;
 
+    // --- Power with skill-based deviation ---
+    const combinedStrength = (this.skills.strength + clubSkill) / 2;
+    const maxPowerDeviation = 0.4 * (1 - combinedStrength / 100);
     const power = Phaser.Math.Clamp(
-      distance * (0.8 + Math.random() * 0.2),
+      distance * (1 - maxPowerDeviation + Math.random() * maxPowerDeviation * 2),
       club.minPower,
       club.maxPower,
     );
 
-    this.ballPhysics.shoot(angle, power, club.loftDegrees);
+    // --- Spin decision based on landing zone terrain ---
+    const { spinDirection, spinAngle } = this.decideSpin(angle, power, club);
+
+    this.ballPhysics.shoot(angle, power, club.loftDegrees, spinDirection, spinAngle);
     this.strokes++;
     this.hasTeedOff = true;
     this.state = GuestState.BALL_FLYING;
+  }
+
+  private getClubSkill(clubId: string): number {
+    switch (clubId) {
+      case 'driver': return this.skills.driver;
+      case 'wood': return this.skills.wood;
+      case 'iron': return this.skills.iron;
+      case 'sandwedge': return this.skills.sandWedge;
+      case 'putter': return this.skills.putter;
+      default: return 50;
+    }
+  }
+
+  private decideSpin(angle: number, power: number, club: { spinAngle: number }): { spinDirection: number; spinAngle: number } {
+    const MIN_SPIN_SKILL = 20;
+    const canSpinLeft = this.skills.leftSpin > MIN_SPIN_SKILL;
+    const canSpinRight = this.skills.rightSpin > MIN_SPIN_SKILL;
+    if (!canSpinLeft && !canSpinRight) return { spinDirection: 0, spinAngle: 0 };
+
+    // Estimate landing position
+    const ballPos = this.ballPhysics.getGroundPosition();
+    const landX = ballPos.x + Math.cos(angle) * power;
+    const landY = ballPos.y + Math.sin(angle) * power;
+    const landTile = this.isoMap.worldToTile(landX, landY);
+    const landTerrain = this.isoMap.getTileAt(landTile.tileX, landTile.tileY);
+
+    // Good terrain — no spin needed
+    if (landTerrain === TileType.FAIRWAY || landTerrain === TileType.GREEN || landTerrain === TileType.TEE) {
+      return { spinDirection: 0, spinAngle: 0 };
+    }
+
+    // Bad terrain — check if spin can help
+    const perpX = -Math.sin(angle);
+    const perpY = Math.cos(angle);
+    const OFFSET = 40; // pixels to sample sideways
+
+    let leftScore = 0;
+    let rightScore = 0;
+
+    for (const dist of [OFFSET, OFFSET * 2, OFFSET * 3]) {
+      const lTile = this.isoMap.worldToTile(landX + perpX * dist, landY + perpY * dist);
+      const rTile = this.isoMap.worldToTile(landX - perpX * dist, landY - perpY * dist);
+      leftScore += this.terrainScore(this.isoMap.getTileAt(lTile.tileX, lTile.tileY));
+      rightScore += this.terrainScore(this.isoMap.getTileAt(rTile.tileX, rTile.tileY));
+    }
+
+    // Pick the better side if the player has skill for it
+    if (leftScore > rightScore && canSpinLeft) {
+      return { spinDirection: -1, spinAngle: club.spinAngle * this.skills.leftSpin / 100 };
+    }
+    if (rightScore > leftScore && canSpinRight) {
+      return { spinDirection: 1, spinAngle: club.spinAngle * this.skills.rightSpin / 100 };
+    }
+
+    return { spinDirection: 0, spinAngle: 0 };
+  }
+
+  private terrainScore(tileType: TileType): number {
+    switch (tileType) {
+      case TileType.FAIRWAY:
+      case TileType.GREEN:
+      case TileType.TEE:
+        return 2;
+      case TileType.GRASS:
+      case TileType.ROUGH:
+        return 1;
+      case TileType.SAND:
+        return 0;
+      case TileType.WATER:
+        return -2;
+      default:
+        return 0;
+    }
   }
 
   /** Distance from ball to flag (used by GuestPair for turn order). */
