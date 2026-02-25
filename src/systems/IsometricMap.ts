@@ -370,10 +370,10 @@ export class IsometricMap {
     this._terrainDirty = true;
   }
 
-  /** Smooth per-edge terrain blending: for each tile edge where the terrain
-   *  type changes, draw the neighbor's texture fading inward using stacked
-   *  alpha strips (nested trapezoids). This creates a smooth gradient from
-   *  ~40% opacity at the shared edge down to 0% at 60% depth. */
+  /** Smooth per-edge terrain blending using linear color gradients.
+   *  For each tile edge where terrain changes, a gradient fades the
+   *  neighbor's terrain color from the shared edge toward the tile center.
+   *  This produces naturally soft, organic-looking transitions. */
   updateBlendOverlays(): void {
     const bounds = this.getWorldBounds();
     const cw = Math.ceil(bounds.width);
@@ -405,32 +405,15 @@ export class IsometricMap {
     const ctx = canvasTex.getContext();
     ctx.clearRect(0, 0, cw, ch);
 
-    // Cache one CanvasPattern per terrain type (transform is set per-use)
-    const patternCache = new Map<TileType, CanvasPattern | null>();
-    const getPattern = (type: TileType): CanvasPattern | null => {
-      if (patternCache.has(type)) return patternCache.get(type)!;
-      const texKey = `tile_${TILE_NAMES[type]}_0`;
-      if (!this.scene.textures.exists(texKey)) { patternCache.set(type, null); return null; }
-      const img = this.scene.textures.get(texKey).getSourceImage() as HTMLImageElement | HTMLCanvasElement;
-      const pat = ctx.createPattern(img, 'repeat');
-      patternCache.set(type, pat);
-      return pat;
-    };
-
-    const STRIPS = 5;
-    const STRIP_ALPHA = 0.14;
-    const MAX_DEPTH = 0.55;  // blend reaches 55% toward tile center
-    const CURVE_BULGE = 1.8; // how far control points push toward center
-    const BLUR_RADIUS = Math.max(3, Math.round(TILE_WIDTH / 12)); // ~5px for 64px tiles
+    const EDGE_ALPHA = 0.55;  // opacity at the shared edge
+    const FADE_STOP = 0.75;   // gradient reaches 0 at 75% toward center
 
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
         const type = this.tiles[y][x];
         const corners = this.getTileCorners(x, y);
-        const center = {
-          x: (corners.n.x + corners.e.x + corners.s.x + corners.w.x) / 4,
-          y: (corners.n.y + corners.e.y + corners.s.y + corners.w.y) / 4,
-        };
+        const cx = (corners.n.x + corners.e.x + corners.s.x + corners.w.x) / 4;
+        const cy = (corners.n.y + corners.e.y + corners.s.y + corners.w.y) / 4;
 
         // 4 cardinal neighbors with the two corner points of the shared edge
         const edges = [
@@ -445,59 +428,40 @@ export class IsometricMap {
           const nType = this.tiles[edge.ny][edge.nx];
           if (nType === type) continue;
 
-          const pat = getPattern(nType);
-          if (!pat) continue;
+          // Neighbor terrain color → RGBA
+          const color = TILE_PROPERTIES[nType].color;
+          const r = (color >> 16) & 0xff;
+          const g = (color >> 8) & 0xff;
+          const b = color & 0xff;
 
-          // Align pattern to the neighbor's tile position for seamless continuation
-          const nWorld = this.tileToWorld(edge.nx, edge.ny);
-          pat.setTransform(new DOMMatrix().translateSelf(
-            (nWorld.x - TILE_WIDTH / 2) - ox,
-            (nWorld.y - TILE_HEIGHT / 2) - oy,
-          ));
+          // Gradient from shared edge midpoint → toward tile center
+          const emx = (edge.ec1.x + edge.ec2.x) / 2;
+          const emy = (edge.ec1.y + edge.ec2.y) / 2;
+          // Extend gradient end beyond center so fade-to-zero happens at FADE_STOP
+          const gex = emx + (cx - emx) / FADE_STOP;
+          const gey = emy + (cy - emy) / FADE_STOP;
 
-          // Draw nested elliptical strips using cubic bezier curves.
-          // Each strip: straight line along shared edge + bezier curve back.
-          // The curve bulges toward tile center, creating organic rounded shapes.
-          // Stacking N strips at STRIP_ALPHA produces a smooth gradient.
-          const e1x = edge.ec1.x - ox, e1y = edge.ec1.y - oy;
-          const e2x = edge.ec2.x - ox, e2y = edge.ec2.y - oy;
+          const grad = ctx.createLinearGradient(
+            emx - ox, emy - oy, gex - ox, gey - oy,
+          );
+          grad.addColorStop(0, `rgba(${r},${g},${b},${EDGE_ALPHA})`);
+          grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
 
-          for (let s = 1; s <= STRIPS; s++) {
-            const depth = MAX_DEPTH * s / STRIPS;
-            const push = depth * CURVE_BULGE;
-
-            // Cubic bezier control points: each edge corner pushed toward center
-            const cp1x = edge.ec2.x + (center.x - edge.ec2.x) * push - ox;
-            const cp1y = edge.ec2.y + (center.y - edge.ec2.y) * push - oy;
-            const cp2x = edge.ec1.x + (center.x - edge.ec1.x) * push - ox;
-            const cp2y = edge.ec1.y + (center.y - edge.ec1.y) * push - oy;
-
-            ctx.save();
-            ctx.globalAlpha = STRIP_ALPHA;
-            ctx.beginPath();
-            ctx.moveTo(e1x, e1y);
-            ctx.lineTo(e2x, e2y);
-            ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, e1x, e1y);
-            ctx.closePath();
-            ctx.clip();
-            ctx.fillStyle = pat;
-            ctx.fill();
-            ctx.restore();
-          }
+          // Clip to tile diamond, fill with gradient
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(corners.n.x - ox, corners.n.y - oy);
+          ctx.lineTo(corners.e.x - ox, corners.e.y - oy);
+          ctx.lineTo(corners.s.x - ox, corners.s.y - oy);
+          ctx.lineTo(corners.w.x - ox, corners.w.y - oy);
+          ctx.closePath();
+          ctx.clip();
+          ctx.fillStyle = grad;
+          ctx.fill();
+          ctx.restore();
         }
       }
     }
-
-    // Apply Gaussian blur to soften all edges into organic shapes
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = cw;
-    tempCanvas.height = ch;
-    const tempCtx = tempCanvas.getContext('2d')!;
-    tempCtx.drawImage(canvasTex.canvas, 0, 0);
-    ctx.clearRect(0, 0, cw, ch);
-    ctx.filter = `blur(${BLUR_RADIUS}px)`;
-    ctx.drawImage(tempCanvas, 0, 0);
-    ctx.filter = 'none';
 
     canvasTex.refresh();
 
