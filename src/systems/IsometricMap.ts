@@ -370,10 +370,10 @@ export class IsometricMap {
     this._terrainDirty = true;
   }
 
-  /** Smooth per-edge terrain blending with textured gradient transitions.
-   *  For each tile edge where terrain changes, the neighbor's tile texture
-   *  is drawn fading inward using a temp canvas + destination-in alpha mask.
-   *  This produces organic transitions that preserve texture detail. */
+  /** Dual-grid terrain blending using pre-generated alpha masks.
+   *  For each internal vertex (where 4 tiles meet), computes a 4-bit index
+   *  per terrain type and composites the corresponding mask with the terrain
+   *  texture onto the blend canvas. */
   updateBlendOverlays(): void {
     const bounds = this.getWorldBounds();
     const cw = Math.ceil(bounds.width);
@@ -405,19 +405,13 @@ export class IsometricMap {
     const ctx = canvasTex.getContext();
     ctx.clearRect(0, 0, cw, ch);
 
-    // === Tuning parameters ===
-    const EDGE_ALPHA = 0.6;   // max texture opacity at the shared edge
-    const BLEND_DEPTH = 0.7;  // blend reaches 70% toward tile center
-    const EDGE_EXT = 0.4;     // extend trapezoid 40% past edge corners
-
-    // Temp canvas for per-edge gradient masking (reused)
+    // Temp canvas for per-vertex mask compositing (tile-sized, reused)
     const tmpCanvas = document.createElement('canvas');
-    const tmpSize = TILE_WIDTH * 4;
-    tmpCanvas.width = tmpSize;
-    tmpCanvas.height = tmpSize;
+    tmpCanvas.width = TILE_WIDTH;
+    tmpCanvas.height = TILE_HEIGHT;
     const tmpCtx = tmpCanvas.getContext('2d')!;
 
-    // Cache CanvasPattern per terrain type (created on tmpCtx)
+    // Cache CanvasPattern per terrain type
     const patternCache = new Map<TileType, CanvasPattern | null>();
     const getPattern = (type: TileType): CanvasPattern | null => {
       if (patternCache.has(type)) return patternCache.get(type)!;
@@ -429,91 +423,76 @@ export class IsometricMap {
       return pat;
     };
 
-    for (let y = 0; y < this.height; y++) {
-      for (let x = 0; x < this.width; x++) {
-        const type = this.tiles[y][x];
-        const corners = this.getTileCorners(x, y);
-        const tileCx = (corners.n.x + corners.e.x + corners.s.x + corners.w.x) / 4;
-        const tileCy = (corners.n.y + corners.e.y + corners.s.y + corners.w.y) / 4;
+    // Cache mask HTMLCanvasElement references
+    const maskCanvases: HTMLCanvasElement[] = [];
+    for (let i = 0; i < 16; i++) {
+      const key = `blend_mask_${i}`;
+      if (this.scene.textures.exists(key)) {
+        maskCanvases[i] = this.scene.textures.get(key).getSourceImage() as HTMLCanvasElement;
+      }
+    }
 
-        const edges = [
-          { nx: x, ny: y - 1, ec1: corners.n, ec2: corners.e },
-          { nx: x + 1, ny: y, ec1: corners.e, ec2: corners.s },
-          { nx: x, ny: y + 1, ec1: corners.s, ec2: corners.w },
-          { nx: x - 1, ny: y, ec1: corners.w, ec2: corners.n },
-        ];
+    // Iterate over internal vertices (where 4 tiles meet)
+    for (let j = 1; j < this.height; j++) {
+      for (let i = 1; i < this.width; i++) {
+        // 4 tiles around this vertex
+        const tNW = this.tiles[j - 1][i - 1]; // top-left
+        const tNE = this.tiles[j - 1][i];     // top-right
+        const tSW = this.tiles[j][i - 1];     // bottom-left
+        const tSE = this.tiles[j][i];         // bottom-right
 
-        for (const edge of edges) {
-          if (!this.isInBounds(edge.nx, edge.ny)) continue;
-          const nType = this.tiles[edge.ny][edge.nx];
-          if (nType === type) continue;
+        // Skip if all 4 tiles are the same type
+        if (tNW === tNE && tNE === tSW && tSW === tSE) continue;
 
-          const pat = getPattern(nType);
+        // Vertex screen position (elevation-aware)
+        const vPos = this.getVertexScreenPos(i, j);
+        const drawX = vPos.x - TILE_WIDTH / 2 - ox;
+        const drawY = vPos.y - TILE_HEIGHT / 2 - oy;
+
+        // Collect unique terrain types at this vertex
+        const types = new Set<TileType>();
+        types.add(tNW);
+        types.add(tNE);
+        types.add(tSW);
+        types.add(tSE);
+
+        for (const type of types) {
+          // Compute 4-bit index for this terrain type
+          let bits = 0;
+          if (tNW === type) bits |= 8;
+          if (tNE === type) bits |= 4;
+          if (tSW === type) bits |= 2;
+          if (tSE === type) bits |= 1;
+
+          // Skip fully empty or fully filled (base tiles handle full coverage)
+          if (bits === 0 || bits === 15) continue;
+
+          const maskCanvas = maskCanvases[bits];
+          if (!maskCanvas) continue;
+
+          const pat = getPattern(type);
           if (!pat) continue;
 
-          // Edge direction and trapezoid points (in main canvas coords)
-          const edx = edge.ec2.x - edge.ec1.x;
-          const edy = edge.ec2.y - edge.ec1.y;
-
-          const p1x = edge.ec1.x - edx * EDGE_EXT - ox;
-          const p1y = edge.ec1.y - edy * EDGE_EXT - oy;
-          const p2x = edge.ec2.x + edx * EDGE_EXT - ox;
-          const p2y = edge.ec2.y + edy * EDGE_EXT - oy;
-          const p3x = edge.ec2.x + (tileCx - edge.ec2.x) * BLEND_DEPTH + edx * EDGE_EXT - ox;
-          const p3y = edge.ec2.y + (tileCy - edge.ec2.y) * BLEND_DEPTH + edy * EDGE_EXT - oy;
-          const p4x = edge.ec1.x + (tileCx - edge.ec1.x) * BLEND_DEPTH - edx * EDGE_EXT - ox;
-          const p4y = edge.ec1.y + (tileCy - edge.ec1.y) * BLEND_DEPTH - edy * EDGE_EXT - oy;
-
-          // Bounding box of trapezoid (for temp canvas region)
-          const bx = Math.floor(Math.min(p1x, p2x, p3x, p4x)) - 1;
-          const by = Math.floor(Math.min(p1y, p2y, p3y, p4y)) - 1;
-          const bw = Math.ceil(Math.max(p1x, p2x, p3x, p4x)) - bx + 2;
-          const bh = Math.ceil(Math.max(p1y, p2y, p3y, p4y)) - by + 2;
-
-          if (bw > tmpSize || bh > tmpSize || bw <= 0 || bh <= 0) continue;
-
-          // --- Step 1: Draw texture pattern into trapezoid on temp canvas ---
-          tmpCtx.clearRect(0, 0, bw, bh);
-
-          // Align pattern to the neighbor's tile grid
-          const nWorld = this.tileToWorld(edge.nx, edge.ny);
+          // Align pattern to match the tile grid position
+          // Use the vertex position as alignment reference
           pat.setTransform(new DOMMatrix().translateSelf(
-            (nWorld.x - TILE_WIDTH / 2) - ox - bx,
-            (nWorld.y - TILE_HEIGHT / 2) - oy - by,
+            -drawX - ox,
+            -drawY - oy,
           ));
 
+          // Step 1: Draw the alpha mask onto temp canvas
+          tmpCtx.clearRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
+          tmpCtx.drawImage(maskCanvas, 0, 0);
+
+          // Step 2: Fill with terrain pattern, masked by alpha (source-in)
           tmpCtx.save();
-          tmpCtx.beginPath();
-          tmpCtx.moveTo(p1x - bx, p1y - by);
-          tmpCtx.lineTo(p2x - bx, p2y - by);
-          tmpCtx.lineTo(p3x - bx, p3y - by);
-          tmpCtx.lineTo(p4x - bx, p4y - by);
-          tmpCtx.closePath();
-          tmpCtx.clip();
+          tmpCtx.globalCompositeOperation = 'source-in';
           tmpCtx.fillStyle = pat;
-          tmpCtx.fill();
+          tmpCtx.fillRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
           tmpCtx.restore();
 
-          // --- Step 2: Apply gradient alpha mask (destination-in) ---
-          const emx = (edge.ec1.x + edge.ec2.x) / 2 - ox;
-          const emy = (edge.ec1.y + edge.ec2.y) / 2 - oy;
-          const gEndX = emx + (tileCx - ox - emx) / BLEND_DEPTH;
-          const gEndY = emy + (tileCy - oy - emy) / BLEND_DEPTH;
-
-          tmpCtx.save();
-          tmpCtx.globalCompositeOperation = 'destination-in';
-          const grad = tmpCtx.createLinearGradient(
-            emx - bx, emy - by, gEndX - bx, gEndY - by,
-          );
-          grad.addColorStop(0, `rgba(0,0,0,${EDGE_ALPHA})`);
-          grad.addColorStop(BLEND_DEPTH, 'rgba(0,0,0,0)');
-          grad.addColorStop(1, 'rgba(0,0,0,0)');
-          tmpCtx.fillStyle = grad;
-          tmpCtx.fillRect(0, 0, bw, bh);
-          tmpCtx.restore();
-
-          // --- Step 3: Composite onto main blend canvas ---
-          ctx.drawImage(tmpCanvas, 0, 0, bw, bh, bx, by, bw, bh);
+          // Step 3: Composite onto main blend canvas
+          ctx.drawImage(tmpCanvas, drawX, drawY);
         }
       }
     }

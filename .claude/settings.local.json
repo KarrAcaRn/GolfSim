@@ -42,7 +42,9 @@
       "Bash(git stash:*)",
       "Bash(git mv:*)",
       "Bash(identify:*)",
-      "Bash(/srv/projects/GolfSim/src/systems/IsometricMap.ts:*)"
+      "Bash(/srv/projects/GolfSim/src/systems/IsometricMap.ts:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }

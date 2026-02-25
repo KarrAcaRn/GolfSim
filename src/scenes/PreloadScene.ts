@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { TILE_NAMES, TileType } from '../models/TileTypes';
+import { generateBlendMasks } from '../systems/BlendMasks';
 
 const VARIANTS_PER_TILE = 5;
 
@@ -27,6 +28,7 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   create(): void {
+    generateBlendMasks(this);
     this.scene.start('MainMenu');
   }
 }
