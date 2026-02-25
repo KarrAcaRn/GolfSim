@@ -370,10 +370,10 @@ export class IsometricMap {
     this._terrainDirty = true;
   }
 
-  /** Smooth per-edge terrain blending using linear color gradients.
-   *  For each tile edge where terrain changes, a gradient fades the
-   *  neighbor's terrain color from the shared edge toward the tile center.
-   *  This produces naturally soft, organic-looking transitions. */
+  /** Smooth per-edge terrain blending with textured gradient transitions.
+   *  For each tile edge where terrain changes, the neighbor's tile texture
+   *  is drawn fading inward using a temp canvas + destination-in alpha mask.
+   *  This produces organic transitions that preserve texture detail. */
   updateBlendOverlays(): void {
     const bounds = this.getWorldBounds();
     const cw = Math.ceil(bounds.width);
@@ -405,16 +405,36 @@ export class IsometricMap {
     const ctx = canvasTex.getContext();
     ctx.clearRect(0, 0, cw, ch);
 
-    const EDGE_ALPHA = 0.5;   // opacity at the shared edge
-    const BLEND_DEPTH = 0.65; // how far inward the blend reaches (fraction to center)
-    const EDGE_EXT = 0.35;    // extend clip past edge corners to overlap neighbors
+    // === Tuning parameters ===
+    const EDGE_ALPHA = 0.6;   // max texture opacity at the shared edge
+    const BLEND_DEPTH = 0.7;  // blend reaches 70% toward tile center
+    const EDGE_EXT = 0.4;     // extend trapezoid 40% past edge corners
+
+    // Temp canvas for per-edge gradient masking (reused)
+    const tmpCanvas = document.createElement('canvas');
+    const tmpSize = TILE_WIDTH * 4;
+    tmpCanvas.width = tmpSize;
+    tmpCanvas.height = tmpSize;
+    const tmpCtx = tmpCanvas.getContext('2d')!;
+
+    // Cache CanvasPattern per terrain type (created on tmpCtx)
+    const patternCache = new Map<TileType, CanvasPattern | null>();
+    const getPattern = (type: TileType): CanvasPattern | null => {
+      if (patternCache.has(type)) return patternCache.get(type)!;
+      const texKey = `tile_${TILE_NAMES[type]}_0`;
+      if (!this.scene.textures.exists(texKey)) { patternCache.set(type, null); return null; }
+      const img = this.scene.textures.get(texKey).getSourceImage() as HTMLImageElement | HTMLCanvasElement;
+      const pat = tmpCtx.createPattern(img, 'repeat');
+      patternCache.set(type, pat);
+      return pat;
+    };
 
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
         const type = this.tiles[y][x];
         const corners = this.getTileCorners(x, y);
-        const cx = (corners.n.x + corners.e.x + corners.s.x + corners.w.x) / 4;
-        const cy = (corners.n.y + corners.e.y + corners.s.y + corners.w.y) / 4;
+        const tileCx = (corners.n.x + corners.e.x + corners.s.x + corners.w.x) / 4;
+        const tileCy = (corners.n.y + corners.e.y + corners.s.y + corners.w.y) / 4;
 
         const edges = [
           { nx: x, ny: y - 1, ec1: corners.n, ec2: corners.e },
@@ -428,49 +448,72 @@ export class IsometricMap {
           const nType = this.tiles[edge.ny][edge.nx];
           if (nType === type) continue;
 
-          const color = TILE_PROPERTIES[nType].color;
-          const r = (color >> 16) & 0xff;
-          const g = (color >> 8) & 0xff;
-          const b = color & 0xff;
+          const pat = getPattern(nType);
+          if (!pat) continue;
 
-          // Edge direction vector
+          // Edge direction and trapezoid points (in main canvas coords)
           const edx = edge.ec2.x - edge.ec1.x;
           const edy = edge.ec2.y - edge.ec1.y;
 
-          // Wide trapezoid clip: extend edge corners outward along edge direction,
-          // inner edge pushed toward tile center. This prevents triangular taper.
           const p1x = edge.ec1.x - edx * EDGE_EXT - ox;
           const p1y = edge.ec1.y - edy * EDGE_EXT - oy;
           const p2x = edge.ec2.x + edx * EDGE_EXT - ox;
           const p2y = edge.ec2.y + edy * EDGE_EXT - oy;
-          const p3x = edge.ec2.x + (cx - edge.ec2.x) * BLEND_DEPTH + edx * EDGE_EXT - ox;
-          const p3y = edge.ec2.y + (cy - edge.ec2.y) * BLEND_DEPTH + edy * EDGE_EXT - oy;
-          const p4x = edge.ec1.x + (cx - edge.ec1.x) * BLEND_DEPTH - edx * EDGE_EXT - ox;
-          const p4y = edge.ec1.y + (cy - edge.ec1.y) * BLEND_DEPTH - edy * EDGE_EXT - oy;
+          const p3x = edge.ec2.x + (tileCx - edge.ec2.x) * BLEND_DEPTH + edx * EDGE_EXT - ox;
+          const p3y = edge.ec2.y + (tileCy - edge.ec2.y) * BLEND_DEPTH + edy * EDGE_EXT - oy;
+          const p4x = edge.ec1.x + (tileCx - edge.ec1.x) * BLEND_DEPTH - edx * EDGE_EXT - ox;
+          const p4y = edge.ec1.y + (tileCy - edge.ec1.y) * BLEND_DEPTH - edy * EDGE_EXT - oy;
 
-          // Gradient: perpendicular to edge, from edge toward center
-          const emx = (edge.ec1.x + edge.ec2.x) / 2;
-          const emy = (edge.ec1.y + edge.ec2.y) / 2;
-          const grad = ctx.createLinearGradient(
-            emx - ox, emy - oy,
-            emx + (cx - emx) * (1 / BLEND_DEPTH) - ox,
-            emy + (cy - emy) * (1 / BLEND_DEPTH) - oy,
+          // Bounding box of trapezoid (for temp canvas region)
+          const bx = Math.floor(Math.min(p1x, p2x, p3x, p4x)) - 1;
+          const by = Math.floor(Math.min(p1y, p2y, p3y, p4y)) - 1;
+          const bw = Math.ceil(Math.max(p1x, p2x, p3x, p4x)) - bx + 2;
+          const bh = Math.ceil(Math.max(p1y, p2y, p3y, p4y)) - by + 2;
+
+          if (bw > tmpSize || bh > tmpSize || bw <= 0 || bh <= 0) continue;
+
+          // --- Step 1: Draw texture pattern into trapezoid on temp canvas ---
+          tmpCtx.clearRect(0, 0, bw, bh);
+
+          // Align pattern to the neighbor's tile grid
+          const nWorld = this.tileToWorld(edge.nx, edge.ny);
+          pat.setTransform(new DOMMatrix().translateSelf(
+            (nWorld.x - TILE_WIDTH / 2) - ox - bx,
+            (nWorld.y - TILE_HEIGHT / 2) - oy - by,
+          ));
+
+          tmpCtx.save();
+          tmpCtx.beginPath();
+          tmpCtx.moveTo(p1x - bx, p1y - by);
+          tmpCtx.lineTo(p2x - bx, p2y - by);
+          tmpCtx.lineTo(p3x - bx, p3y - by);
+          tmpCtx.lineTo(p4x - bx, p4y - by);
+          tmpCtx.closePath();
+          tmpCtx.clip();
+          tmpCtx.fillStyle = pat;
+          tmpCtx.fill();
+          tmpCtx.restore();
+
+          // --- Step 2: Apply gradient alpha mask (destination-in) ---
+          const emx = (edge.ec1.x + edge.ec2.x) / 2 - ox;
+          const emy = (edge.ec1.y + edge.ec2.y) / 2 - oy;
+          const gEndX = emx + (tileCx - ox - emx) / BLEND_DEPTH;
+          const gEndY = emy + (tileCy - oy - emy) / BLEND_DEPTH;
+
+          tmpCtx.save();
+          tmpCtx.globalCompositeOperation = 'destination-in';
+          const grad = tmpCtx.createLinearGradient(
+            emx - bx, emy - by, gEndX - bx, gEndY - by,
           );
-          grad.addColorStop(0, `rgba(${r},${g},${b},${EDGE_ALPHA})`);
-          grad.addColorStop(BLEND_DEPTH, `rgba(${r},${g},${b},0)`);
-          grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+          grad.addColorStop(0, `rgba(0,0,0,${EDGE_ALPHA})`);
+          grad.addColorStop(BLEND_DEPTH, 'rgba(0,0,0,0)');
+          grad.addColorStop(1, 'rgba(0,0,0,0)');
+          tmpCtx.fillStyle = grad;
+          tmpCtx.fillRect(0, 0, bw, bh);
+          tmpCtx.restore();
 
-          ctx.save();
-          ctx.beginPath();
-          ctx.moveTo(p1x, p1y);
-          ctx.lineTo(p2x, p2y);
-          ctx.lineTo(p3x, p3y);
-          ctx.lineTo(p4x, p4y);
-          ctx.closePath();
-          ctx.clip();
-          ctx.fillStyle = grad;
-          ctx.fillRect(0, 0, cw, ch);
-          ctx.restore();
+          // --- Step 3: Composite onto main blend canvas ---
+          ctx.drawImage(tmpCanvas, 0, 0, bw, bh, bx, by, bw, bh);
         }
       }
     }
