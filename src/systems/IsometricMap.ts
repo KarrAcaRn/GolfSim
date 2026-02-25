@@ -418,9 +418,10 @@ export class IsometricMap {
     };
 
     const STRIPS = 5;
-    const STRIP_ALPHA = 0.10;
-    const MAX_DEPTH = 0.5;   // blend reaches 50% toward tile center
+    const STRIP_ALPHA = 0.14;
+    const MAX_DEPTH = 0.55;  // blend reaches 55% toward tile center
     const CURVE_BULGE = 1.8; // how far control points push toward center
+    const BLUR_RADIUS = Math.max(3, Math.round(TILE_WIDTH / 12)); // ~5px for 64px tiles
 
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
@@ -486,6 +487,17 @@ export class IsometricMap {
         }
       }
     }
+
+    // Apply Gaussian blur to soften all edges into organic shapes
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = cw;
+    tempCanvas.height = ch;
+    const tempCtx = tempCanvas.getContext('2d')!;
+    tempCtx.drawImage(canvasTex.canvas, 0, 0);
+    ctx.clearRect(0, 0, cw, ch);
+    ctx.filter = `blur(${BLUR_RADIUS}px)`;
+    ctx.drawImage(tempCanvas, 0, 0);
+    ctx.filter = 'none';
 
     canvasTex.refresh();
 
