@@ -417,9 +417,10 @@ export class IsometricMap {
       return pat;
     };
 
-    const STRIPS = 4;
-    const STRIP_ALPHA = 0.12;
-    const MAX_DEPTH = 0.6; // blend reaches 60% toward tile center
+    const STRIPS = 5;
+    const STRIP_ALPHA = 0.10;
+    const MAX_DEPTH = 0.5;   // blend reaches 50% toward tile center
+    const CURVE_BULGE = 1.8; // how far control points push toward center
 
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
@@ -453,23 +454,29 @@ export class IsometricMap {
             (nWorld.y - TILE_HEIGHT / 2) - oy,
           ));
 
-          // Draw nested trapezoid strips (smallest innermost first, largest last)
-          // Each strip covers from the shared edge to `depth` fraction toward center.
+          // Draw nested elliptical strips using cubic bezier curves.
+          // Each strip: straight line along shared edge + bezier curve back.
+          // The curve bulges toward tile center, creating organic rounded shapes.
           // Stacking N strips at STRIP_ALPHA produces a smooth gradient.
+          const e1x = edge.ec1.x - ox, e1y = edge.ec1.y - oy;
+          const e2x = edge.ec2.x - ox, e2y = edge.ec2.y - oy;
+
           for (let s = 1; s <= STRIPS; s++) {
             const depth = MAX_DEPTH * s / STRIPS;
-            const i1x = edge.ec1.x + (center.x - edge.ec1.x) * depth - ox;
-            const i1y = edge.ec1.y + (center.y - edge.ec1.y) * depth - oy;
-            const i2x = edge.ec2.x + (center.x - edge.ec2.x) * depth - ox;
-            const i2y = edge.ec2.y + (center.y - edge.ec2.y) * depth - oy;
+            const push = depth * CURVE_BULGE;
+
+            // Cubic bezier control points: each edge corner pushed toward center
+            const cp1x = edge.ec2.x + (center.x - edge.ec2.x) * push - ox;
+            const cp1y = edge.ec2.y + (center.y - edge.ec2.y) * push - oy;
+            const cp2x = edge.ec1.x + (center.x - edge.ec1.x) * push - ox;
+            const cp2y = edge.ec1.y + (center.y - edge.ec1.y) * push - oy;
 
             ctx.save();
             ctx.globalAlpha = STRIP_ALPHA;
             ctx.beginPath();
-            ctx.moveTo(edge.ec1.x - ox, edge.ec1.y - oy);
-            ctx.lineTo(edge.ec2.x - ox, edge.ec2.y - oy);
-            ctx.lineTo(i2x, i2y);
-            ctx.lineTo(i1x, i1y);
+            ctx.moveTo(e1x, e1y);
+            ctx.lineTo(e2x, e2y);
+            ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, e1x, e1y);
             ctx.closePath();
             ctx.clip();
             ctx.fillStyle = pat;
