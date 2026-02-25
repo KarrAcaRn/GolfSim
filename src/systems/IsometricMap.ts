@@ -405,8 +405,9 @@ export class IsometricMap {
     const ctx = canvasTex.getContext();
     ctx.clearRect(0, 0, cw, ch);
 
-    const EDGE_ALPHA = 0.55;  // opacity at the shared edge
-    const FADE_STOP = 0.75;   // gradient reaches 0 at 75% toward center
+    const EDGE_ALPHA = 0.5;   // opacity at the shared edge
+    const BLEND_DEPTH = 0.65; // how far inward the blend reaches (fraction to center)
+    const EDGE_EXT = 0.35;    // extend clip past edge corners to overlap neighbors
 
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
@@ -415,7 +416,6 @@ export class IsometricMap {
         const cx = (corners.n.x + corners.e.x + corners.s.x + corners.w.x) / 4;
         const cy = (corners.n.y + corners.e.y + corners.s.y + corners.w.y) / 4;
 
-        // 4 cardinal neighbors with the two corner points of the shared edge
         const edges = [
           { nx: x, ny: y - 1, ec1: corners.n, ec2: corners.e },
           { nx: x + 1, ny: y, ec1: corners.e, ec2: corners.s },
@@ -428,36 +428,48 @@ export class IsometricMap {
           const nType = this.tiles[edge.ny][edge.nx];
           if (nType === type) continue;
 
-          // Neighbor terrain color → RGBA
           const color = TILE_PROPERTIES[nType].color;
           const r = (color >> 16) & 0xff;
           const g = (color >> 8) & 0xff;
           const b = color & 0xff;
 
-          // Gradient from shared edge midpoint → toward tile center
+          // Edge direction vector
+          const edx = edge.ec2.x - edge.ec1.x;
+          const edy = edge.ec2.y - edge.ec1.y;
+
+          // Wide trapezoid clip: extend edge corners outward along edge direction,
+          // inner edge pushed toward tile center. This prevents triangular taper.
+          const p1x = edge.ec1.x - edx * EDGE_EXT - ox;
+          const p1y = edge.ec1.y - edy * EDGE_EXT - oy;
+          const p2x = edge.ec2.x + edx * EDGE_EXT - ox;
+          const p2y = edge.ec2.y + edy * EDGE_EXT - oy;
+          const p3x = edge.ec2.x + (cx - edge.ec2.x) * BLEND_DEPTH + edx * EDGE_EXT - ox;
+          const p3y = edge.ec2.y + (cy - edge.ec2.y) * BLEND_DEPTH + edy * EDGE_EXT - oy;
+          const p4x = edge.ec1.x + (cx - edge.ec1.x) * BLEND_DEPTH - edx * EDGE_EXT - ox;
+          const p4y = edge.ec1.y + (cy - edge.ec1.y) * BLEND_DEPTH - edy * EDGE_EXT - oy;
+
+          // Gradient: perpendicular to edge, from edge toward center
           const emx = (edge.ec1.x + edge.ec2.x) / 2;
           const emy = (edge.ec1.y + edge.ec2.y) / 2;
-          // Extend gradient end beyond center so fade-to-zero happens at FADE_STOP
-          const gex = emx + (cx - emx) / FADE_STOP;
-          const gey = emy + (cy - emy) / FADE_STOP;
-
           const grad = ctx.createLinearGradient(
-            emx - ox, emy - oy, gex - ox, gey - oy,
+            emx - ox, emy - oy,
+            emx + (cx - emx) * (1 / BLEND_DEPTH) - ox,
+            emy + (cy - emy) * (1 / BLEND_DEPTH) - oy,
           );
           grad.addColorStop(0, `rgba(${r},${g},${b},${EDGE_ALPHA})`);
+          grad.addColorStop(BLEND_DEPTH, `rgba(${r},${g},${b},0)`);
           grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
 
-          // Clip to tile diamond, fill with gradient
           ctx.save();
           ctx.beginPath();
-          ctx.moveTo(corners.n.x - ox, corners.n.y - oy);
-          ctx.lineTo(corners.e.x - ox, corners.e.y - oy);
-          ctx.lineTo(corners.s.x - ox, corners.s.y - oy);
-          ctx.lineTo(corners.w.x - ox, corners.w.y - oy);
+          ctx.moveTo(p1x, p1y);
+          ctx.lineTo(p2x, p2y);
+          ctx.lineTo(p3x, p3y);
+          ctx.lineTo(p4x, p4y);
           ctx.closePath();
           ctx.clip();
           ctx.fillStyle = grad;
-          ctx.fill();
+          ctx.fillRect(0, 0, cw, ch);
           ctx.restore();
         }
       }
