@@ -2,117 +2,109 @@ import Phaser from 'phaser';
 import { TILE_WIDTH, TILE_HEIGHT } from '../utils/Constants';
 
 /**
- * Generates 16 alpha-mask CanvasTextures (blend_mask_0..15) for dual-grid
- * terrain blending.  Each mask is a 64×32 isometric diamond whose 4 quadrants
- * are filled or empty based on the 4-bit index.
+ * Generates 16 alpha-mask CanvasTextures for dual-grid terrain blending.
  *
- * Bit layout (which quadrant is filled):
- *   bit 3 (8) = NW   bit 2 (4) = NE
- *   bit 1 (2) = SW   bit 0 (1) = SE
+ * In isometric space, the 4 tiles around a vertex sit at N/E/S/W positions
+ * (not NW/NE/SW/SE). The diamond is divided into 4 kite-shaped quadrants
+ * by lines connecting opposite edge midpoints through the center.
  *
- * Shape categories:
- *   empty (0), full (15)
- *   corner  (1,2,4,8)     – 1 quadrant, rounded boundary via quadratic bézier
- *   edge    (3,5,10,12)   – 2 adjacent quadrants, straight centre-line boundary
- *   diagonal(6,9)         – 2 opposite corners (S-curve)
- *   inner   (7,11,13,14)  – 3 quadrants, rounded cutout (inverse of corner)
+ * Bit layout:  bit 3(8)=N  bit 2(4)=E  bit 1(2)=W  bit 0(1)=S
  */
 export function generateBlendMasks(scene: Phaser.Scene): void {
-  // Diamond vertices & centre
-  const N: Pt = [TILE_WIDTH / 2, 0];
-  const E: Pt = [TILE_WIDTH, TILE_HEIGHT / 2];
-  const S: Pt = [TILE_WIDTH / 2, TILE_HEIGHT];
-  const W: Pt = [0, TILE_HEIGHT / 2];
-  const C: Pt = [TILE_WIDTH / 2, TILE_HEIGHT / 2]; // bézier control point
+  // Diamond vertices
+  const N:  P = [TILE_WIDTH / 2, 0];
+  const E:  P = [TILE_WIDTH, TILE_HEIGHT / 2];
+  const S:  P = [TILE_WIDTH / 2, TILE_HEIGHT];
+  const W:  P = [0, TILE_HEIGHT / 2];
+  const C:  P = [TILE_WIDTH / 2, TILE_HEIGHT / 2];
+
+  // Edge midpoints (divide diamond into N/E/S/W kite quadrants)
+  const NE: P = [(N[0] + E[0]) / 2, (N[1] + E[1]) / 2]; // (48, 8)
+  const SE: P = [(E[0] + S[0]) / 2, (E[1] + S[1]) / 2]; // (48, 24)
+  const SW: P = [(S[0] + W[0]) / 2, (S[1] + W[1]) / 2]; // (16, 24)
+  const NW: P = [(W[0] + N[0]) / 2, (W[1] + N[1]) / 2]; // (16, 8)
 
   for (let index = 0; index < 16; index++) {
     const key = `blend_mask_${index}`;
     if (scene.textures.exists(key)) continue;
 
-    const canvasTex = scene.textures.createCanvas(key, TILE_WIDTH, TILE_HEIGHT)!;
-    const ctx = canvasTex.getContext();
+    const tex = scene.textures.createCanvas(key, TILE_WIDTH, TILE_HEIGHT)!;
+    const ctx = tex.getContext();
+    if (index === 0) { tex.refresh(); continue; }
 
-    if (index === 0) { canvasTex.refresh(); continue; }
-
-    // Clip to isometric diamond
+    // Clip to diamond
     ctx.save();
-    ctx.beginPath();
-    moveTo(ctx, N); lineTo(ctx, E); lineTo(ctx, S); lineTo(ctx, W);
-    ctx.closePath();
+    beginPoly(ctx, [N, E, S, W]);
     ctx.clip();
-
     ctx.fillStyle = 'white';
 
     switch (index) {
-      // ---- full ----
       case 15: ctx.fillRect(0, 0, TILE_WIDTH, TILE_HEIGHT); break;
 
-      // ---- corners (1 quadrant, rounded boundary) ----
-      case 8:  corner(ctx, N, W, C); break;  // NW
-      case 4:  corner(ctx, N, E, C); break;  // NE
-      case 2:  corner(ctx, S, W, C); break;  // SW
-      case 1:  corner(ctx, S, E, C); break;  // SE
+      // --- Corners (single kite, curved boundary) ---
+      case 8:  kite(ctx, N, NE, NW, C); break;
+      case 4:  kite(ctx, E, SE, NE, C); break;
+      case 1:  kite(ctx, S, SW, SE, C); break;
+      case 2:  kite(ctx, W, NW, SW, C); break;
 
-      // ---- edges (2 adjacent quadrants, straight boundary) ----
-      case 12: tri(ctx, N, E, W); break;     // NW+NE  (top half)
-      case 3:  tri(ctx, E, S, W); break;     // SW+SE  (bottom half)
-      case 10: tri(ctx, N, W, S); break;     // NW+SW  (left half)
-      case 5:  tri(ctx, N, E, S); break;     // NE+SE  (right half)
+      // --- Edges (half diamond, straight diagonal boundary) ---
+      case 12: quad(ctx, NW, N, E, SE); break;  // N+E
+      case 3:  quad(ctx, NW, W, S, SE); break;  // W+S
+      case 10: quad(ctx, NE, N, W, SW); break;  // N+W
+      case 5:  quad(ctx, NE, E, S, SW); break;  // E+S
 
-      // ---- diagonals (2 opposite corners) ----
-      case 9:  corner(ctx, N, W, C); corner(ctx, S, E, C); break; // NW+SE
-      case 6:  corner(ctx, N, E, C); corner(ctx, S, W, C); break; // NE+SW
+      // --- Diagonals (two opposite kites) ---
+      case 9:  kite(ctx, N, NE, NW, C); kite(ctx, S, SW, SE, C); break;
+      case 6:  kite(ctx, E, SE, NE, C); kite(ctx, W, NW, SW, C); break;
 
-      // ---- inner corners (3 quadrants, 1 rounded cutout) ----
-      case 7:  innerCorner(ctx, W, N, E, S, C); break; // ¬NW
-      case 11: innerCorner(ctx, N, E, S, W, C); break; // ¬NE
-      case 13: innerCorner(ctx, W, S, E, N, C); break; // ¬SW
-      case 14: innerCorner(ctx, E, S, W, N, C); break; // ¬SE
+      // --- Inner corners (diamond minus one kite, curved cutout) ---
+      case 7:  innerKite(ctx, NW, NE, [E, S, W], C); break;  // ¬N
+      case 11: innerKite(ctx, NE, SE, [S, W, N], C); break;  // ¬E
+      case 14: innerKite(ctx, SE, SW, [W, N, E], C); break;  // ¬S
+      case 13: innerKite(ctx, SW, NW, [N, E, S], C); break;  // ¬W
     }
 
     ctx.restore();
-    canvasTex.refresh();
+    tex.refresh();
   }
 }
 
-// ---------------------------------------------------------------------------
-// helpers
-// ---------------------------------------------------------------------------
-type Pt = [number, number];
+type P = [number, number];
 
-function moveTo(ctx: CanvasRenderingContext2D, p: Pt): void { ctx.moveTo(p[0], p[1]); }
-function lineTo(ctx: CanvasRenderingContext2D, p: Pt): void { ctx.lineTo(p[0], p[1]); }
-
-/** Single rounded corner: diamond-edge v1→v2, then bézier curve v2→v1 via C. */
-function corner(ctx: CanvasRenderingContext2D, v1: Pt, v2: Pt, C: Pt): void {
+function beginPoly(ctx: CanvasRenderingContext2D, pts: P[]): void {
   ctx.beginPath();
-  moveTo(ctx, v1);
-  lineTo(ctx, v2);
-  ctx.quadraticCurveTo(C[0], C[1], v1[0], v1[1]);
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.closePath();
+}
+
+/** Single kite quadrant with curved inner boundary.
+ *  vertex → mid1 (edge), mid1 → mid2 (curve via C), mid2 → vertex (edge) */
+function kite(ctx: CanvasRenderingContext2D, vertex: P, mid1: P, mid2: P, C: P): void {
+  ctx.beginPath();
+  ctx.moveTo(vertex[0], vertex[1]);
+  ctx.lineTo(mid1[0], mid1[1]);
+  ctx.quadraticCurveTo(C[0], C[1], mid2[0], mid2[1]);
   ctx.closePath();
   ctx.fill();
 }
 
-/** Straight-edged half-diamond (triangle). */
-function tri(ctx: CanvasRenderingContext2D, a: Pt, b: Pt, c: Pt): void {
-  ctx.beginPath();
-  moveTo(ctx, a); lineTo(ctx, b); lineTo(ctx, c);
-  ctx.closePath();
+/** Straight-edged quadrilateral (for edge masks). */
+function quad(ctx: CanvasRenderingContext2D, a: P, b: P, c: P, d: P): void {
+  beginPoly(ctx, [a, b, c, d]);
   ctx.fill();
 }
 
-/** Three quadrants filled, one rounded cutout.
- *  curveA → curveB is the bézier boundary (same curve as the missing corner),
- *  then follow diamond edges v3 → v4 back to curveA. */
-function innerCorner(
+/** Diamond minus one kite (inner corner with curved cutout).
+ *  Curve from mid1→mid2 via C, then follow diamond vertices back. */
+function innerKite(
   ctx: CanvasRenderingContext2D,
-  curveA: Pt, curveB: Pt, v3: Pt, v4: Pt, C: Pt,
+  mid1: P, mid2: P, verts: P[], C: P,
 ): void {
   ctx.beginPath();
-  moveTo(ctx, curveA);
-  ctx.quadraticCurveTo(C[0], C[1], curveB[0], curveB[1]);
-  lineTo(ctx, v3);
-  lineTo(ctx, v4);
+  ctx.moveTo(mid1[0], mid1[1]);
+  ctx.quadraticCurveTo(C[0], C[1], mid2[0], mid2[1]);
+  for (const v of verts) ctx.lineTo(v[0], v[1]);
   ctx.closePath();
   ctx.fill();
 }
