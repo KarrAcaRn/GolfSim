@@ -432,14 +432,18 @@ export class IsometricMap {
       }
     }
 
-    // Iterate over internal vertices (where 4 tiles meet)
-    for (let j = 1; j < this.height; j++) {
-      for (let i = 1; i < this.width; i++) {
-        // 4 tiles around this vertex
-        const tNW = this.tiles[j - 1][i - 1]; // top-left
-        const tNE = this.tiles[j - 1][i];     // top-right
-        const tSW = this.tiles[j][i - 1];     // bottom-left
-        const tSE = this.tiles[j][i];         // bottom-right
+    // Safe tile access: out-of-bounds tiles default to GRASS (map border)
+    const tileAt = (tx: number, ty: number): TileType =>
+      this.isInBounds(tx, ty) ? this.tiles[ty][tx] : TileType.GRASS;
+
+    // Iterate over ALL vertices (including map border)
+    for (let j = 0; j <= this.height; j++) {
+      for (let i = 0; i <= this.width; i++) {
+        // 4 tiles around this vertex (safe access for border vertices)
+        const tNW = tileAt(i - 1, j - 1); // N (above in screen)
+        const tNE = tileAt(i, j - 1);     // E (right in screen)
+        const tSW = tileAt(i - 1, j);     // W (left in screen)
+        const tSE = tileAt(i, j);         // S (below in screen)
 
         // Skip if all 4 tiles are the same type
         if (tNW === tNE && tNE === tSW && tSW === tSE) continue;
