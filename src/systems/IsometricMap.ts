@@ -405,12 +405,6 @@ export class IsometricMap {
     const ctx = canvasTex.getContext();
     ctx.clearRect(0, 0, cw, ch);
 
-    // Temp canvas for per-vertex mask compositing (tile-sized, reused)
-    const tmpCanvas = document.createElement('canvas');
-    tmpCanvas.width = TILE_WIDTH;
-    tmpCanvas.height = TILE_HEIGHT;
-    const tmpCtx = tmpCanvas.getContext('2d')!;
-
     // Cache tile source images per terrain type
     const imageCache = new Map<TileType, HTMLImageElement | HTMLCanvasElement | null>();
     const getImage = (type: TileType): HTMLImageElement | HTMLCanvasElement | null => {
@@ -422,76 +416,110 @@ export class IsometricMap {
       return img;
     };
 
-    // Cache mask HTMLCanvasElement references
-    const maskCanvases: HTMLCanvasElement[] = [];
-    for (let i = 0; i < 16; i++) {
-      const key = `blend_mask_${i}`;
-      if (this.scene.textures.exists(key)) {
-        maskCanvases[i] = this.scene.textures.get(key).getSourceImage() as HTMLCanvasElement;
-      }
-    }
+    // Helper: world → canvas coords
+    const toC = (pos: { x: number; y: number }) => ({ x: pos.x - ox, y: pos.y - oy });
+    const mid = (a: { x: number; y: number }, b: { x: number; y: number }) => ({
+      x: (a.x + b.x) / 2, y: (a.y + b.y) / 2,
+    });
+
+    // Elevation-aware tile center (average of 4 corner positions)
+    const getTileCenter = (tx: number, ty: number) => {
+      const n = this.getVertexScreenPos(tx, ty);
+      const e = this.getVertexScreenPos(tx + 1, ty);
+      const s = this.getVertexScreenPos(tx + 1, ty + 1);
+      const w = this.getVertexScreenPos(tx, ty + 1);
+      return { x: (n.x + e.x + s.x + w.x) / 4, y: (n.y + e.y + s.y + w.y) / 4 };
+    };
+
+    // Draw a kite sub-path (vertex → mid1, curve via center to mid2, close)
+    const kitePath = (
+      vertex: { x: number; y: number }, mid1: { x: number; y: number },
+      mid2: { x: number; y: number }, center: { x: number; y: number },
+    ) => {
+      ctx.moveTo(vertex.x, vertex.y);
+      ctx.lineTo(mid1.x, mid1.y);
+      ctx.quadraticCurveTo(center.x, center.y, mid2.x, mid2.y);
+      ctx.closePath();
+    };
 
     // Safe tile access: out-of-bounds tiles default to GRASS (map border)
     const tileAt = (tx: number, ty: number): TileType =>
       this.isInBounds(tx, ty) ? this.tiles[ty][tx] : TileType.GRASS;
 
+    const hw = TILE_WIDTH / 2;
+    const hh = TILE_HEIGHT / 2;
+
     // Iterate over ALL vertices (including map border)
     for (let j = 0; j <= this.height; j++) {
       for (let i = 0; i <= this.width; i++) {
-        // 4 tiles around this vertex (safe access for border vertices)
-        const tNW = tileAt(i - 1, j - 1); // N (above in screen)
-        const tNE = tileAt(i, j - 1);     // E (right in screen)
-        const tSW = tileAt(i - 1, j);     // W (left in screen)
-        const tSE = tileAt(i, j);         // S (below in screen)
+        const tN = tileAt(i - 1, j - 1); // N (above in screen)
+        const tE = tileAt(i, j - 1);     // E (right in screen)
+        const tW = tileAt(i - 1, j);     // W (left in screen)
+        const tS = tileAt(i, j);         // S (below in screen)
 
-        // Skip if all 4 tiles are the same type
-        if (tNW === tNE && tNE === tSW && tSW === tSE) continue;
+        if (tN === tE && tE === tW && tW === tS) continue;
 
-        // Vertex screen position (elevation-aware)
-        const vPos = this.getVertexScreenPos(i, j);
-        const drawX = vPos.x - TILE_WIDTH / 2 - ox;
-        const drawY = vPos.y - TILE_HEIGHT / 2 - oy;
+        // Elevation-aware positions in canvas coords
+        const vC = toC(this.getVertexScreenPos(i, j));
+        const nC = toC(getTileCenter(i - 1, j - 1));
+        const eC = toC(getTileCenter(i, j - 1));
+        const wC = toC(getTileCenter(i - 1, j));
+        const sC = toC(getTileCenter(i, j));
 
-        // Collect unique terrain types at this vertex
+        // Edge midpoints (between tile centers)
+        const ne = mid(nC, eC);
+        const se = mid(eC, sC);
+        const sw = mid(sC, wC);
+        const nw = mid(nC, wC);
+
         const types = new Set<TileType>();
-        types.add(tNW);
-        types.add(tNE);
-        types.add(tSW);
-        types.add(tSE);
+        types.add(tN); types.add(tE); types.add(tW); types.add(tS);
 
         for (const type of types) {
-          // Compute 4-bit index for this terrain type
           let bits = 0;
-          if (tNW === type) bits |= 8;
-          if (tNE === type) bits |= 4;
-          if (tSW === type) bits |= 2;
-          if (tSE === type) bits |= 1;
-
-          // Skip fully empty or fully filled (base tiles handle full coverage)
+          if (tN === type) bits |= 8;
+          if (tE === type) bits |= 4;
+          if (tW === type) bits |= 2;
+          if (tS === type) bits |= 1;
           if (bits === 0 || bits === 15) continue;
-
-          const maskCanvas = maskCanvases[bits];
-          if (!maskCanvas) continue;
 
           const img = getImage(type);
           if (!img) continue;
 
-          // Step 1: Draw terrain texture at 4 surrounding tile positions
-          // to fully cover the mask diamond (diamond tiles have transparent corners,
-          // so a single drawImage or repeat pattern would leave gaps)
-          tmpCtx.clearRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
-          tmpCtx.drawImage(img, 0, -TILE_HEIGHT / 2);      // N tile position
-          tmpCtx.drawImage(img, TILE_WIDTH / 2, 0);         // E tile position
-          tmpCtx.drawImage(img, -TILE_WIDTH / 2, 0);        // W tile position
-          tmpCtx.drawImage(img, 0, TILE_HEIGHT / 2);         // S tile position
+          // Build elevation-aware clip path for this mask shape
+          ctx.save();
+          ctx.beginPath();
 
-          // Step 2: Clip texture to mask shape (destination-in keeps texture where mask is opaque)
-          tmpCtx.globalCompositeOperation = 'destination-in';
-          tmpCtx.drawImage(maskCanvas, 0, 0);
-          tmpCtx.globalCompositeOperation = 'source-over';
+          switch (bits) {
+            // Single kite (corner)
+            case 8:  kitePath(nC, ne, nw, vC); break;
+            case 4:  kitePath(eC, se, ne, vC); break;
+            case 1:  kitePath(sC, sw, se, vC); break;
+            case 2:  kitePath(wC, nw, sw, vC); break;
+            // Half diamond (edge — straight diagonal boundary)
+            case 12: ctx.moveTo(nw.x, nw.y); ctx.lineTo(nC.x, nC.y); ctx.lineTo(eC.x, eC.y); ctx.lineTo(se.x, se.y); ctx.closePath(); break;
+            case 3:  ctx.moveTo(nw.x, nw.y); ctx.lineTo(wC.x, wC.y); ctx.lineTo(sC.x, sC.y); ctx.lineTo(se.x, se.y); ctx.closePath(); break;
+            case 10: ctx.moveTo(ne.x, ne.y); ctx.lineTo(nC.x, nC.y); ctx.lineTo(wC.x, wC.y); ctx.lineTo(sw.x, sw.y); ctx.closePath(); break;
+            case 5:  ctx.moveTo(ne.x, ne.y); ctx.lineTo(eC.x, eC.y); ctx.lineTo(sC.x, sC.y); ctx.lineTo(sw.x, sw.y); ctx.closePath(); break;
+            // Diagonal (two opposite kites)
+            case 9:  kitePath(nC, ne, nw, vC); kitePath(sC, sw, se, vC); break;
+            case 6:  kitePath(eC, se, ne, vC); kitePath(wC, nw, sw, vC); break;
+            // Inner corner (diamond minus one kite)
+            case 7:  ctx.moveTo(nw.x, nw.y); ctx.quadraticCurveTo(vC.x, vC.y, ne.x, ne.y); ctx.lineTo(eC.x, eC.y); ctx.lineTo(sC.x, sC.y); ctx.lineTo(wC.x, wC.y); ctx.closePath(); break;
+            case 11: ctx.moveTo(ne.x, ne.y); ctx.quadraticCurveTo(vC.x, vC.y, se.x, se.y); ctx.lineTo(sC.x, sC.y); ctx.lineTo(wC.x, wC.y); ctx.lineTo(nC.x, nC.y); ctx.closePath(); break;
+            case 14: ctx.moveTo(se.x, se.y); ctx.quadraticCurveTo(vC.x, vC.y, sw.x, sw.y); ctx.lineTo(wC.x, wC.y); ctx.lineTo(nC.x, nC.y); ctx.lineTo(eC.x, eC.y); ctx.closePath(); break;
+            case 13: ctx.moveTo(sw.x, sw.y); ctx.quadraticCurveTo(vC.x, vC.y, nw.x, nw.y); ctx.lineTo(nC.x, nC.y); ctx.lineTo(eC.x, eC.y); ctx.lineTo(sC.x, sC.y); ctx.closePath(); break;
+          }
 
-          // Step 3: Composite onto main blend canvas
-          ctx.drawImage(tmpCanvas, drawX, drawY);
+          ctx.clip();
+
+          // Draw tile texture at all 4 surrounding tile positions (covers warped area)
+          ctx.drawImage(img, nC.x - hw, nC.y - hh);
+          ctx.drawImage(img, eC.x - hw, eC.y - hh);
+          ctx.drawImage(img, wC.x - hw, wC.y - hh);
+          ctx.drawImage(img, sC.x - hw, sC.y - hh);
+
+          ctx.restore();
         }
       }
     }
