@@ -411,16 +411,15 @@ export class IsometricMap {
     tmpCanvas.height = TILE_HEIGHT;
     const tmpCtx = tmpCanvas.getContext('2d')!;
 
-    // Cache CanvasPattern per terrain type
-    const patternCache = new Map<TileType, CanvasPattern | null>();
-    const getPattern = (type: TileType): CanvasPattern | null => {
-      if (patternCache.has(type)) return patternCache.get(type)!;
+    // Cache tile source images per terrain type
+    const imageCache = new Map<TileType, HTMLImageElement | HTMLCanvasElement | null>();
+    const getImage = (type: TileType): HTMLImageElement | HTMLCanvasElement | null => {
+      if (imageCache.has(type)) return imageCache.get(type)!;
       const texKey = `tile_${TILE_NAMES[type]}_0`;
-      if (!this.scene.textures.exists(texKey)) { patternCache.set(type, null); return null; }
+      if (!this.scene.textures.exists(texKey)) { imageCache.set(type, null); return null; }
       const img = this.scene.textures.get(texKey).getSourceImage() as HTMLImageElement | HTMLCanvasElement;
-      const pat = tmpCtx.createPattern(img, 'repeat');
-      patternCache.set(type, pat);
-      return pat;
+      imageCache.set(type, img);
+      return img;
     };
 
     // Cache mask HTMLCanvasElement references
@@ -474,26 +473,22 @@ export class IsometricMap {
           const maskCanvas = maskCanvases[bits];
           if (!maskCanvas) continue;
 
-          const pat = getPattern(type);
-          if (!pat) continue;
+          const img = getImage(type);
+          if (!img) continue;
 
-          // Align pattern to match the tile grid position
-          // Use the vertex position as alignment reference
-          pat.setTransform(new DOMMatrix().translateSelf(
-            -drawX - ox,
-            -drawY - oy,
-          ));
-
-          // Step 1: Draw the alpha mask onto temp canvas
+          // Step 1: Draw terrain texture at 4 surrounding tile positions
+          // to fully cover the mask diamond (diamond tiles have transparent corners,
+          // so a single drawImage or repeat pattern would leave gaps)
           tmpCtx.clearRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
-          tmpCtx.drawImage(maskCanvas, 0, 0);
+          tmpCtx.drawImage(img, 0, -TILE_HEIGHT / 2);      // N tile position
+          tmpCtx.drawImage(img, TILE_WIDTH / 2, 0);         // E tile position
+          tmpCtx.drawImage(img, -TILE_WIDTH / 2, 0);        // W tile position
+          tmpCtx.drawImage(img, 0, TILE_HEIGHT / 2);         // S tile position
 
-          // Step 2: Fill with terrain pattern, masked by alpha (source-in)
-          tmpCtx.save();
-          tmpCtx.globalCompositeOperation = 'source-in';
-          tmpCtx.fillStyle = pat;
-          tmpCtx.fillRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
-          tmpCtx.restore();
+          // Step 2: Clip texture to mask shape (destination-in keeps texture where mask is opaque)
+          tmpCtx.globalCompositeOperation = 'destination-in';
+          tmpCtx.drawImage(maskCanvas, 0, 0);
+          tmpCtx.globalCompositeOperation = 'source-over';
 
           // Step 3: Composite onto main blend canvas
           ctx.drawImage(tmpCanvas, drawX, drawY);
